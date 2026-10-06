@@ -29,11 +29,6 @@ onMounted(load);
         </p>
         <h2 class="display text-3xl font-bold">Patient directory</h2>
       </div>
-      <button
-        class="flex w-fit items-center gap-2 rounded-xl bg-[#1c9f8d] px-4 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
-      >
-        <span class="material-symbols-rounded">person_add</span> Add patient
-      </button>
     </div>
     <div class="mb-6 grid gap-4 sm:grid-cols-3">
       <div class="rounded-2xl border border-[#e5ebf2] bg-white p-5">
