@@ -39,6 +39,7 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 </script>
+
 <template>
   <section v-if="admission">
     <div class="mb-7 flex flex-wrap items-center gap-2 text-sm text-[#8491a3]">
