@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Frontend build
+frontend/dist/
+
+# Backend build
+backend/dist/
+
+# Demo uploaded files
+backend/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Project handoff/configuration files
+START-HERE.txt
+MODULE-GUIDE.txt
+DEPENDENCY-VERSIONS.json

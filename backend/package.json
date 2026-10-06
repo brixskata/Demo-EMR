@@ -1,0 +1,53 @@
+{
+  "name": "smartehr-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.12.0 <25"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "worker": "node --env-file-if-exists=.env dist/worker.js",
+    "worker:dev": "node --env-file-if-exists=.env --watch src/worker.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "setup:local-auth": "node scripts/setup-local-auth.ts",
+    "test:auth:integration": "node --env-file-if-exists=.env tests/auth.integration.ts",
+    "seed:demo": "node --env-file-if-exists=.env database/seeds/002_demo_auth.ts",
+    "audit:demo": "node --env-file-if-exists=.env scripts/audit-demo-data.ts",
+    "clean:demo": "node --env-file-if-exists=.env scripts/clean-demo-data.ts",
+    "his:preview": "node --env-file-if-exists=.env scripts/test-his-live-read.ts",
+    "start:test": "node scripts/start-test-environment.mjs",
+    "dev:test": "node scripts/start-test-environment.mjs --dev",
+    "start:live": "node --env-file-if-exists=.env dist/server.js",
+    "dev:live": "node --env-file-if-exists=.env --watch src/server.ts"
+    ,"db": "node --env-file-if-exists=.env database/migrate.ts"
+    ,"seed": "node --env-file-if-exists=.env database/seed.ts"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "jose": "^6.2.12",
+    "mssql": "^12.0.0",
+    "pino": "^10.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.0",
+    "@types/mssql": "^9.1.8",
+    "@types/node": "^24.0.0",
+    "typescript": "~6.0.0"
+  },
+  "allowScripts": {
+    "msnodesqlv8@5.4.0": true
+  },
+  "optionalDependencies": {
+    "msnodesqlv8": "5.4.0"
+  }
+}
