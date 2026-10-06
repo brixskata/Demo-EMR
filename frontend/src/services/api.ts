@@ -15,5 +15,6 @@ export const api = {
   patient: (id: number) => request<Patient & { admissions: Admission[] }>(`/patients/${id}`),
   admission: (id: number) => request<Admission & { documents: MedicalDocument[] }>(`/admissions/${id}`),
   documents: (admissionId: number) => request<MedicalDocument[]>(`/documents/admissions/${admissionId}/documents`),
+  documentFileUrl: (documentId: number) => `${base}/documents/${documentId}/file`,
   createDocument: (payload: { admissionId: number; documentType: string; fileName: string; documentDate: string; uploadedBy: string; contentBase64?: string }) => request<MedicalDocument>('/documents', { method: 'POST', body: JSON.stringify(payload) }),
 }

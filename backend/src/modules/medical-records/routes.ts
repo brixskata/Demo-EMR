@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getDocument, listDocuments, createDocument } from './repository.ts'
 import { requireRole } from '../../shared/authorization/demoAuth.ts'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 
@@ -18,6 +19,22 @@ documentRouter.get('/:documentId', asyncHandler(async (req, res) => {
   const document = await getDocument(idSchema.parse(req.params.documentId))
   if (!document) throw new HttpError(404, 'Document not found')
   res.json({ ok: true, data: document })
+}))
+documentRouter.get('/:documentId/file', asyncHandler(async (req, res) => {
+  const document = await getDocument(idSchema.parse(req.params.documentId))
+  if (!document) throw new HttpError(404, 'Document not found')
+  if (!document.storagePath.startsWith('uploads/demo/')) {
+    throw new HttpError(404, 'No stored demo file is available for this document')
+  }
+  const uploadDir = path.resolve(process.cwd(), 'uploads', 'demo')
+  const filePath = path.resolve(uploadDir, path.basename(document.storagePath))
+  try {
+    await access(filePath, constants.R_OK)
+  } catch {
+    throw new HttpError(404, 'The stored demo file could not be found')
+  }
+  res.setHeader('Content-Disposition', 'inline')
+  res.sendFile(filePath)
 }))
 documentRouter.post('/', requireRole('ADMIN', 'RECORDS_STAFF', 'NURSE'), asyncHandler(async (req, res) => {
   const input = createSchema.parse(req.body)
