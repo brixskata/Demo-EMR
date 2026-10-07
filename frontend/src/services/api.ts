@@ -11,7 +11,7 @@ export type CodeChartAccess = { clinicalRole: ClinicalRole; permission: ChartPer
 export type CodeChartActivity = { clinicalRole: ClinicalRole; action: 'GRANTED_ACCESS' | 'CHANGED_PERMISSION' | 'REVOKED_ACCESS' | 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT'; permission: ChartPermission | null; createdAt: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', 'x-demo-role': localStorage.getItem('demo-role') ?? 'RECORDS_STAFF', ...init?.headers } })
+  const response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', 'x-demo-role': localStorage.getItem('demo-role') ?? 'ADMIN', ...init?.headers } })
   const body = await response.json() as { ok: boolean; data: T; error?: { message: string } }
   if (!response.ok || !body.ok) throw new Error(body.error?.message ?? 'Request failed')
   return body.data

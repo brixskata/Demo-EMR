@@ -48,7 +48,10 @@ async function loadChartAccess() {
 function permissionFor(role: ClinicalRole) { return chartAccess.value.find((item) => item.clinicalRole === role)?.permission }
 function roleLabel(role: ClinicalRole) { return role.charAt(0) + role.slice(1).toLowerCase() }
 function actionLabel(action: CodeChartActivity["action"]) { return action.split("_").map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(" ") }
-function formatActivityTime(value: string) { return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(value)) }
+function formatActivityTime(value: string) {
+  const utcValue = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(utcValue))
+}
 async function saveChartAccess() {
   chartLoading.value = true; chartError.value = ""
   try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedChartRole.value, selectedPermission.value); await loadChartAccess(); showAccessDialog.value = false } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
