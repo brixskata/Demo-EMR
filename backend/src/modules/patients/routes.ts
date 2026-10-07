@@ -5,10 +5,15 @@ import { getPatient, listPatients } from './repository.ts'
 import { listAdmissions } from '../admissions/repository.ts'
 
 const idSchema = z.coerce.number().int().positive()
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(5),
+  search: z.string().trim().max(120).default(''),
+})
 export const patientRouter = Router()
 patientRouter.get('/', asyncHandler(async (req, res) => {
-  const search = z.string().max(120).optional().parse(req.query.search)
-  res.json({ ok: true, data: await listPatients(search) })
+  const query = listQuerySchema.parse(req.query)
+  res.json({ ok: true, data: await listPatients(query) })
 }))
 patientRouter.get('/:patientId', asyncHandler(async (req, res) => {
   const patientId = idSchema.parse(req.params.patientId)

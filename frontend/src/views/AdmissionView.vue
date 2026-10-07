@@ -2,31 +2,61 @@
 import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { RouterLink } from "vue-router";
-import { api, type Admission, type MedicalDocument } from "../services/api";
+import { api, type Admission, type ClinicalRole, type ChartPermission, type CodeChartAccess, type CodeChartActivity, type MedicalDocument } from "../services/api";
 import UploadDocumentDialog from "../components/medical-records/UploadDocumentDialog.vue";
 import { useDemoStore } from "../stores/demo";
 const route = useRoute();
 const demo = useDemoStore();
 const admission = ref<Admission & { documents: MedicalDocument[] }>();
+const patientName = ref("");
 const loading = ref(true);
 const error = ref("");
 const showUpload = ref(false);
+const showAccessDialog = ref(false);
 const search = ref("");
 const docs = ref<MedicalDocument[]>([]);
 const documentPage = ref(1);
 const documentPageSize = 5;
 const documentTotal = ref(0);
 const documentTotalPages = ref(0);
+const chartRoles: ClinicalRole[] = ["PHYSICIAN", "CONSULTANT", "RESIDENT", "INTERN", "NURSE"];
+const chartAccess = ref<CodeChartAccess[]>([]);
+const chartActivity = ref<CodeChartActivity[]>([]);
+const selectedChartRole = ref<ClinicalRole>("PHYSICIAN");
+const selectedPermission = ref<ChartPermission>("VIEW_ONLY");
+const chartLoading = ref(false);
+const chartError = ref("");
 async function load() {
   loading.value = true;
   try {
     admission.value = await api.admission(Number(route.params.admissionId));
+    const patient = await api.patient(admission.value.patientId);
+    patientName.value = `${patient.lastName}, ${patient.firstName}`;
+    await loadChartAccess();
     await loadDocuments(1);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Could not load admission";
   } finally {
     loading.value = false;
   }
+}
+async function loadChartAccess() {
+  const result = await api.codeChartAccess(Number(route.params.admissionId));
+  chartAccess.value = result.access;
+  chartActivity.value = result.activity;
+}
+function permissionFor(role: ClinicalRole) { return chartAccess.value.find((item) => item.clinicalRole === role)?.permission }
+function roleLabel(role: ClinicalRole) { return role.charAt(0) + role.slice(1).toLowerCase() }
+function actionLabel(action: CodeChartActivity["action"]) { return action.split("_").map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(" ") }
+function formatActivityTime(value: string) { return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(value)) }
+async function saveChartAccess() {
+  chartLoading.value = true; chartError.value = ""
+  try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedChartRole.value, selectedPermission.value); await loadChartAccess(); showAccessDialog.value = false } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
+}
+function changeChartAccess(role: ClinicalRole) {
+  selectedChartRole.value = role
+  selectedPermission.value = permissionFor(role) ?? "VIEW_ONLY"
+  showAccessDialog.value = true
 }
 async function loadDocuments(nextPage = documentPage.value) {
   const result = await api.documents(Number(route.params.admissionId), {
@@ -85,11 +115,14 @@ function formatDate(value: string) {
           <span
             class="rounded-full bg-[#edf8f6] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#198e7e]"
             >{{ admission.status }} admission</span
-          ><span class="text-xs text-[#91a0b2]">Synthetic record</span>
+          ><span class="text-xs text-[#91a0b2]">Patient record</span>
         </div>
         <h2 class="display text-3xl font-bold">
           {{ admission.admissionNumber }}
         </h2>
+        <p class="mt-1 text-sm font-semibold text-[#5d7592]">
+          Encounter Number: {{ admission.encounterNumber }}
+        </p>
         <p class="mt-2 text-sm text-[#7b8799]">
           {{ admission.ward }} · Admitted
           {{ formatDate(admission.admissionDate)
@@ -98,6 +131,14 @@ function formatDate(value: string) {
           >
         </p>
       </div>
+      <div class="flex items-center gap-3">
+      <button
+        class="flex items-center justify-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
+        :disabled="chartLoading"
+        @click="showAccessDialog = true"
+      >
+        <span class="material-symbols-rounded">add</span>Give Access
+      </button>
       <button
         v-if="demo.canUpload"
         class="flex items-center justify-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
@@ -105,7 +146,17 @@ function formatDate(value: string) {
       >
         <span class="material-symbols-rounded">add</span>Add document
       </button>
+      </div>
     </div>
+    <section v-if="admission" class="hidden mb-8 rounded-2xl border border-[#e5ebf2] bg-white p-6">
+      <div class="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div><h3 class="display text-xl font-bold">Code Chart Access</h3><p class="mt-1 text-sm text-[#8491a3]">{{ patientName }} · Encounter {{ admission.encounterNumber }}</p></div>
+      </div>
+      <p v-if="chartError" class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p>
+      <div class="mb-5 flex items-center justify-between"><h4 class="font-bold">Authorized roles</h4><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ chartAccess.length }} authorized roles</span></div>
+      <div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="role in chartRoles" :key="role" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ roleLabel(role) }}</td><td class="py-3 text-[#6f8095]">{{ permissionFor(role) === 'FULL_ACCESS' ? 'Full Access' : permissionFor(role) === 'VIEW_ONLY' ? 'View Only' : 'Not authorized' }}</td><td class="py-3 text-right"><button v-if="permissionFor(role)" class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="changeChartAccess(role)">Change Access</button></td></tr></tbody></table></div>
+      <div v-if="chartActivity.length" class="mt-6 border-t border-[#edf1f5] pt-5"><h4 class="mb-3 font-bold">Access activity</h4><div class="space-y-2 text-sm"><div v-for="item in chartActivity.slice(0, 5)" :key="`${item.createdAt}-${item.clinicalRole}-${item.action}`" class="flex justify-between gap-4 text-[#6f8095]"><span>{{ actionLabel(item.action) }} · {{ roleLabel(item.clinicalRole) }}</span><span>{{ formatActivityTime(item.createdAt) }}</span></div></div></div>
+    </section>
     <div
       class="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"
     >
@@ -135,7 +186,7 @@ function formatDate(value: string) {
         >
         <h4 class="font-bold">No documents yet</h4>
         <p class="mt-1 text-sm text-[#8491a3]">
-          Add a synthetic document to this admission to see it here.
+          Add a document to this admission to see it here.
         </p>
       </div>
       <div v-else class="overflow-x-auto">
@@ -249,10 +300,22 @@ function formatDate(value: string) {
         </div>
       </div>
     </div>
+    <section v-if="admission" class="mt-8 mb-8 rounded-2xl border border-[#e5ebf2] bg-white p-6">
+      <div class="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div><h3 class="display text-xl font-bold">Code Chart Access</h3><p class="mt-1 text-sm text-[#8491a3]">{{ patientName }} · Encounter {{ admission.encounterNumber }}</p></div>
+      </div>
+      <p v-if="chartError" class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p>
+      <div class="mb-5 flex items-center justify-between"><h4 class="font-bold">Authorized roles</h4><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ chartAccess.length }} authorized roles</span></div>
+      <div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="role in chartRoles" :key="role" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ roleLabel(role) }}</td><td class="py-3 text-[#6f8095]">{{ permissionFor(role) === 'FULL_ACCESS' ? 'Full Access' : permissionFor(role) === 'VIEW_ONLY' ? 'View Only' : 'Not authorized' }}</td><td class="py-3 text-right"><button v-if="permissionFor(role)" class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="changeChartAccess(role)">Change Access</button></td></tr></tbody></table></div>
+      <div v-if="chartActivity.length" class="mt-6 border-t border-[#edf1f5] pt-5"><h4 class="mb-3 font-bold">Access activity</h4><div class="space-y-2 text-sm"><div v-for="item in chartActivity.slice(0, 5)" :key="`${item.createdAt}-${item.clinicalRole}-${item.action}`" class="flex justify-between gap-4 text-[#6f8095]"><span>{{ actionLabel(item.action) }} · {{ roleLabel(item.clinicalRole) }}</span><span>{{ formatActivityTime(item.createdAt) }}</span></div></div></div>
+    </section>
+      <div v-if="showAccessDialog" class="fixed inset-0 z-50 grid place-items-center bg-[#0b1425]/60 p-4 backdrop-blur-sm" @click.self="showAccessDialog = false">
+      <div class="w-full max-w-[520px] rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Code Chart Access</div><h2 class="display text-2xl font-bold">Give Access</h2><p class="mt-1 text-sm text-[#7b8799]">{{ patientName }} · Encounter {{ admission?.encounterNumber }}</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="showAccessDialog = false"><span class="material-symbols-rounded">close</span></button></div><div class="space-y-5"><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Clinical role</span><select v-model="selectedChartRole" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option v-for="role in chartRoles" :key="role" :value="role">{{ roleLabel(role) }}</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Permission</span><select v-model="selectedPermission" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="VIEW_ONLY">View Only</option><option value="FULL_ACCESS">Full Access</option></select></label><p v-if="chartError" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p></div><div class="mt-7 flex justify-end gap-3"><button class="rounded-xl px-4 py-3 text-sm font-bold text-[#69778d]" @click="showAccessDialog = false">Cancel</button><button class="flex items-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20 disabled:opacity-50" :disabled="chartLoading" @click="saveChartAccess"><span class="material-symbols-rounded">add</span>Give Access</button></div></div>
+    </div>
     <UploadDocumentDialog
       v-if="showUpload"
       :admission-id="admission.admissionId"
-      patient-name="synthetic patient"
+      patient-name="patient"
       @close="showUpload = false"
       @saved="
         showUpload = false;

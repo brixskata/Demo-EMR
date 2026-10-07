@@ -41,7 +41,7 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
     >
       <div>
         <p class="mb-2 text-sm text-[#7b8799]">
-          A synthetic workspace for demo and development
+          Medical records workspace
         </p>
         <h2 class="display text-3xl font-bold">Patient directory</h2>
       </div>
@@ -97,7 +97,7 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
         /></label>
       </div>
       <div v-if="loading" class="p-10 text-center text-sm text-[#8290a4]">
-        Loading synthetic patients…
+        Loading patients…
       </div>
       <div
         v-else-if="error"
@@ -141,7 +141,7 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
                       {{ patient.firstName.toUpperCase() }}
                     </div>
                     <div class="mt-1 text-xs text-[#8a98aa]">
-                      Synthetic patient
+                      Patient record
                     </div>
                   </div></RouterLink
                 >
