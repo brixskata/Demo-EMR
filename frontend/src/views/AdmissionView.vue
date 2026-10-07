@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { RouterLink } from "vue-router";
 import { api, type Admission, type ClinicalRole, type ChartPermission, type CodeChartAccess, type CodeChartActivity, type MedicalDocument } from "../services/api";
@@ -26,6 +26,8 @@ const selectedChartRole = ref<ClinicalRole>("PHYSICIAN");
 const selectedPermission = ref<ChartPermission>("VIEW_ONLY");
 const chartLoading = ref(false);
 const chartError = ref("");
+const canManageAccess = computed(() => demo.role === "ADMIN");
+const canUploadDocuments = computed(() => demo.role === "ADMIN" || permissionFor(demo.role as ClinicalRole) === "FULL_ACCESS");
 async function load() {
   loading.value = true;
   try {
@@ -138,12 +140,13 @@ function formatDate(value: string) {
       <button
         class="flex items-center justify-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
         :disabled="chartLoading"
+        v-if="canManageAccess"
         @click="showAccessDialog = true"
       >
         <span class="material-symbols-rounded">add</span>Give Access
       </button>
       <button
-        v-if="demo.canUpload"
+        v-if="canUploadDocuments"
         class="flex items-center justify-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
         @click="showUpload = true"
       >

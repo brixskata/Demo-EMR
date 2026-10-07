@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { HttpError } from '../http.ts'
 
-export type DemoRole = 'ADMIN' | 'RECORDS_STAFF' | 'PHYSICIAN' | 'CONSULTANT' | 'RESIDENT' | 'INTERN' | 'NURSE'
+export type DemoRole = 'ADMIN' | 'PHYSICIAN' | 'CONSULTANT' | 'RESIDENT' | 'INTERN' | 'NURSE'
 
 declare global {
   namespace Express {
@@ -9,11 +9,11 @@ declare global {
   }
 }
 
-const roles = new Set<DemoRole>(['ADMIN', 'RECORDS_STAFF', 'PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'])
+const roles = new Set<DemoRole>(['ADMIN', 'PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'])
 
 export function demoAuth(req: Request, _res: Response, next: NextFunction): void {
-  const candidate = req.header('x-demo-role') ?? process.env.DEMO_ROLE ?? 'RECORDS_STAFF'
-  req.demoRole = roles.has(candidate as DemoRole) ? candidate as DemoRole : 'RECORDS_STAFF'
+  const candidate = req.header('x-demo-role') ?? process.env.DEMO_ROLE ?? 'ADMIN'
+  req.demoRole = roles.has(candidate as DemoRole) ? candidate as DemoRole : 'ADMIN'
   next()
 }
 

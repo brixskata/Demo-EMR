@@ -20,7 +20,7 @@ const createSchema = z.object({ admissionId: z.coerce.number().int().positive(),
 const allowedTypes = new Set(['Medical Certificate', 'Laboratory Result', 'Imaging Result', 'Discharge Summary', 'Clinical Notes', 'Prescription', 'Consolidated Medical Record', 'Other'])
 const clinicalRoles = new Set<ClinicalRole>(['PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'])
 async function ensureDocumentAccess(req: Request, admissionId: number, required: 'VIEW_ONLY' | 'FULL_ACCESS'): Promise<void> {
-  if (req.demoRole === 'ADMIN' || req.demoRole === 'RECORDS_STAFF') return
+  if (req.demoRole === 'ADMIN') return
   if (!req.demoRole || !clinicalRoles.has(req.demoRole as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
   const permission = await getCodeChartPermission(admissionId, req.demoRole as ClinicalRole)
   if (!permission || (required === 'FULL_ACCESS' && permission !== 'FULL_ACCESS')) throw new HttpError(403, 'This role does not have permission to perform this document action')
@@ -56,7 +56,7 @@ documentRouter.get('/:documentId/file', asyncHandler(async (req, res) => {
   if (req.demoRole && clinicalRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(document.admissionId, req.demoRole as ClinicalRole, 'VIEWED_DOCUMENT')
   res.sendFile(filePath)
 }))
-documentRouter.post('/', requireRole('ADMIN', 'RECORDS_STAFF', 'PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'), asyncHandler(async (req, res) => {
+documentRouter.post('/', requireRole('ADMIN', 'PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'), asyncHandler(async (req, res) => {
   const input = createSchema.parse(req.body)
   if (!allowedTypes.has(input.documentType)) throw new HttpError(400, 'Unsupported document type')
   await ensureDocumentAccess(req, input.admissionId, 'FULL_ACCESS')
