@@ -2,7 +2,7 @@ const base = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
 export type Patient = { patientId: number; patientNumber: string; firstName: string; lastName: string; dateOfBirth: string; sex: string; admissionCount?: number }
 export type Admission = { admissionId: number; patientId: number; admissionNumber: string; admissionDate: string; dischargeDate: string | null; ward: string; status: string; documentCount?: number }
-export type MedicalDocument = { documentId: number; admissionId: number; documentType: string; fileName: string; documentDate: string; uploadedBy: string; uploadedAt: string; status: string; storagePath: string }
+export type MedicalDocument = { documentId: number; admissionId: number; documentType: string; documentName: string; fileName: string; documentDate: string; uploadedBy: string; uploadedAt: string; status: string; storagePath: string }
 export type PatientListResult = { items: Patient[]; page: number; pageSize: number; total: number; totalPages: number }
 export type DocumentListResult = { items: MedicalDocument[]; page: number; pageSize: number; total: number; totalPages: number }
 
@@ -26,5 +26,5 @@ export const api = {
     return request<DocumentListResult>(`/documents/admissions/${admissionId}/documents?${query.toString()}`)
   },
   documentFileUrl: (documentId: number) => `${base}/documents/${documentId}/file`,
-  createDocument: (payload: { admissionId: number; documentType: string; fileName: string; documentDate: string; uploadedBy: string; contentBase64?: string }) => request<MedicalDocument>('/documents', { method: 'POST', body: JSON.stringify(payload) }),
+  createDocument: (payload: { admissionId: number; documentType: string; documentName: string; fileName: string; documentDate: string; uploadedBy: string; contentBase64?: string }) => request<MedicalDocument>('/documents', { method: 'POST', body: JSON.stringify(payload) }),
 }

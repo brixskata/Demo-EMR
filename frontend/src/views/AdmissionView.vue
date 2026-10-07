@@ -167,10 +167,11 @@ function formatDate(value: string) {
                   </div>
                   <div>
                     <div class="font-bold text-[#263650]">
-                      {{ doc.fileName }}
+                      {{ doc.documentName || doc.fileName }}
                     </div>
                     <div class="mt-1 text-xs text-[#8a98aa]">
                       Document #{{ String(doc.documentId).padStart(4, "0") }}
+                    
                     </div>
                   </div>
                 </div>
