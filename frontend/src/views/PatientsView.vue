@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { api, type Patient } from "../services/api";
 const patients = ref<Patient[]>([]);
 const search = ref("");
+const page = ref(1);
+const pageSize = 5;
+const total = ref(0);
+const totalPages = ref(0);
 const loading = ref(true);
 const error = ref("");
-async function load() {
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+async function load(nextPage = page.value) {
   loading.value = true;
   try {
-    patients.value = await api.patients(search.value);
+    const result = await api.patients({ page: nextPage, pageSize, search: search.value });
+    patients.value = result.items;
+    page.value = result.page;
+    total.value = result.total;
+    totalPages.value = result.totalPages;
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Could not load patients";
   } finally {
     loading.value = false;
   }
 }
+function searchPatients() {
+  if (searchTimer) clearTimeout(searchTimer);
+  page.value = 1;
+  searchTimer = setTimeout(() => { void load(1); }, 300);
+}
+function goToPage(nextPage: number) { if (nextPage >= 1 && nextPage <= totalPages.value && nextPage !== page.value) void load(nextPage); }
 onMounted(load);
+onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
 </script>
 <template>
   <section>
@@ -77,7 +93,7 @@ onMounted(load);
             v-model="search"
             class="w-full outline-none"
             placeholder="Search by name or ID"
-            @keyup.enter="load"
+            @input="searchPatients"
         /></label>
       </div>
       <div v-if="loading" class="p-10 text-center text-sm text-[#8290a4]">
@@ -88,7 +104,7 @@ onMounted(load);
         class="m-5 rounded-xl bg-red-50 p-4 text-sm text-red-700"
       >
         {{ error }}
-        <button class="font-bold underline" @click="load">Retry</button>
+        <button class="font-bold underline" @click="load()">Retry</button>
       </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full min-w-[680px] text-left text-sm">
@@ -158,6 +174,14 @@ onMounted(load);
           class="p-10 text-center text-sm text-[#8290a4]"
         >
           No patients found.
+        </div>
+        <div class="flex flex-col gap-3 border-t border-[#edf1f5] px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span class="text-[#8491a3]">Showing {{ total ? (page - 1) * pageSize + 1 : 0 }}–{{ Math.min(page * pageSize, total) }} of {{ total }} patients</span>
+          <div class="flex items-center gap-1">
+            <button class="rounded-lg px-3 py-2 font-semibold text-[#53637a] hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40" :disabled="page <= 1 || loading" @click="goToPage(page - 1)">Previous</button>
+            <button v-for="pageNumber in totalPages" :key="pageNumber" class="grid h-9 min-w-9 place-items-center rounded-lg px-2 font-semibold" :class="pageNumber === page ? 'bg-[#e8f1f5] text-[#36586b]' : 'text-[#53637a] hover:bg-[#f2f6f8]'" :disabled="loading" @click="goToPage(pageNumber)">{{ pageNumber }}</button>
+            <button class="rounded-lg px-3 py-2 font-semibold text-[#53637a] hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40" :disabled="page >= totalPages || loading" @click="goToPage(page + 1)">Next</button>
+          </div>
         </div>
       </div>
     </div>

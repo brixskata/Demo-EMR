@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { RouterLink } from "vue-router";
 import { api, type Admission, type MedicalDocument } from "../services/api";
@@ -12,22 +12,44 @@ const loading = ref(true);
 const error = ref("");
 const showUpload = ref(false);
 const search = ref("");
-const docs = computed(
-  () =>
-    admission.value?.documents.filter((d) =>
-      `${d.documentType} ${d.fileName}`
-        .toLowerCase()
-        .includes(search.value.toLowerCase()),
-    ) ?? [],
-);
+const docs = ref<MedicalDocument[]>([]);
+const documentPage = ref(1);
+const documentPageSize = 5;
+const documentTotal = ref(0);
+const documentTotalPages = ref(0);
 async function load() {
   loading.value = true;
   try {
     admission.value = await api.admission(Number(route.params.admissionId));
+    await loadDocuments(1);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Could not load admission";
   } finally {
     loading.value = false;
+  }
+}
+async function loadDocuments(nextPage = documentPage.value) {
+  const result = await api.documents(Number(route.params.admissionId), {
+    page: nextPage,
+    pageSize: documentPageSize,
+    search: search.value,
+  });
+  docs.value = result.items;
+  documentPage.value = result.page;
+  documentTotal.value = result.total;
+  documentTotalPages.value = result.totalPages;
+}
+function searchDocuments() {
+  documentPage.value = 1;
+  void loadDocuments(1);
+}
+function goToDocumentPage(nextPage: number) {
+  if (
+    nextPage >= 1 &&
+    nextPage <= documentTotalPages.value &&
+    nextPage !== documentPage.value
+  ) {
+    void loadDocuments(nextPage);
   }
 }
 onMounted(load);
@@ -90,7 +112,7 @@ function formatDate(value: string) {
       <div>
         <h3 class="display text-xl font-bold">Admission documents</h3>
         <p class="mt-1 text-sm text-[#8491a3]">
-          {{ admission.documents.length }} metadata records attached to this
+          {{ documentTotal }} metadata records attached to this
           admission
         </p>
       </div>
@@ -101,6 +123,7 @@ function formatDate(value: string) {
           v-model="search"
           class="w-full outline-none"
           placeholder="Search documents"
+          @input="searchDocuments"
       /></label>
     </div>
     <div
@@ -182,6 +205,47 @@ function formatDate(value: string) {
             </tr>
           </tbody>
         </table>
+      </div>
+      <div
+        class="flex flex-col gap-3 border-t border-[#edf1f5] px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+      >
+        <span class="text-[#8491a3]">
+          Showing
+          {{ documentTotal ? (documentPage - 1) * documentPageSize + 1 : 0 }}–{{
+            Math.min(documentPage * documentPageSize, documentTotal)
+          }}
+          of {{ documentTotal }} documents
+        </span>
+        <div class="flex items-center gap-1">
+          <button
+            class="rounded-lg px-3 py-2 font-semibold text-[#53637a] hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="documentPage <= 1 || loading"
+            @click="goToDocumentPage(documentPage - 1)"
+          >
+            Previous
+          </button>
+          <button
+            v-for="pageNumber in documentTotalPages"
+            :key="pageNumber"
+            class="grid h-9 min-w-9 place-items-center rounded-lg px-2 font-semibold"
+            :class="
+              pageNumber === documentPage
+                ? 'bg-[#e8f1f5] text-[#36586b]'
+                : 'text-[#53637a] hover:bg-[#f2f6f8]'
+            "
+            :disabled="loading"
+            @click="goToDocumentPage(pageNumber)"
+          >
+            {{ pageNumber }}
+          </button>
+          <button
+            class="rounded-lg px-3 py-2 font-semibold text-[#53637a] hover:bg-[#f2f6f8] disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="documentPage >= documentTotalPages || loading"
+            @click="goToDocumentPage(documentPage + 1)"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
     <UploadDocumentDialog
