@@ -3,7 +3,16 @@ import { ref } from 'vue'
 import { api } from '../../services/api'
 const props = defineProps<{ admissionId: number; patientName: string }>()
 const emit = defineEmits<{ saved: [] ; close: [] }>()
-const types = ['Medical Certificate','Laboratory Result','Imaging Result','Discharge Summary','Clinical Notes','Prescription','Other']
+const types = [
+  'Consolidated Medical Record',
+  'Medical Certificate',
+  'Laboratory Result',
+  'Imaging Result',
+  'Discharge Summary',
+  'Clinical Notes',
+  'Prescription',
+  'Other'
+]
 const documentType = ref<string>(types[0] ?? 'Other'); const documentDate = ref(new Date().toISOString().slice(0,10)); const file = ref<File>(); const saving = ref(false); const submitted = ref(false); const error = ref('')
 function pick(event: Event) { file.value = (event.target as HTMLInputElement).files?.[0] }
 async function toBase64(input: File): Promise<string> { const bytes = new Uint8Array(await input.arrayBuffer()); const chunkSize = 0x8000; let binary = ''; for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)); return btoa(binary) }
