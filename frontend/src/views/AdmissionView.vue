@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { RouterLink } from "vue-router";
-import { api, type Admission, type ClinicalRole, type ChartPermission, type CodeChartAccess, type CodeChartActivity, type MedicalDocument } from "../services/api";
+import { api, type Admission, type ChartPermission, type CodeChartAccess, type CodeChartActivity, type DemoAccount, type MedicalDocument } from "../services/api";
 import UploadDocumentDialog from "../components/medical-records/UploadDocumentDialog.vue";
 import { useDemoStore } from "../stores/demo";
 const route = useRoute();
@@ -19,15 +19,17 @@ const documentPage = ref(1);
 const documentPageSize = 5;
 const documentTotal = ref(0);
 const documentTotalPages = ref(0);
-const chartRoles: ClinicalRole[] = ["PHYSICIAN", "CONSULTANT", "RESIDENT", "INTERN", "NURSE"];
 const chartAccess = ref<CodeChartAccess[]>([]);
 const chartActivity = ref<CodeChartActivity[]>([]);
-const selectedChartRole = ref<ClinicalRole>("PHYSICIAN");
+const chartAccounts = ref<DemoAccount[]>([]);
+const selectedAccountId = ref(0);
 const selectedPermission = ref<ChartPermission>("VIEW_ONLY");
+const selectedExpiration = ref("");
+const selectedReason = ref("CHART_COMPLETION");
 const chartLoading = ref(false);
 const chartError = ref("");
 const canManageAccess = computed(() => demo.role === "ADMIN");
-const canUploadDocuments = computed(() => demo.role === "ADMIN" || permissionFor(demo.role as ClinicalRole) === "FULL_ACCESS");
+const canUploadDocuments = computed(() => demo.role === "ADMIN" || chartAccess.value.some((item) => item.clinicalRole === demo.role && item.permission === "FULL_ACCESS"));
 async function load() {
   loading.value = true;
   try {
@@ -46,21 +48,27 @@ async function loadChartAccess() {
   const result = await api.codeChartAccess(Number(route.params.admissionId));
   chartAccess.value = result.access;
   chartActivity.value = result.activity;
+  chartAccounts.value = result.accounts;
 }
-function permissionFor(role: ClinicalRole) { return chartAccess.value.find((item) => item.clinicalRole === role)?.permission }
-function roleLabel(role: ClinicalRole) { return role.charAt(0) + role.slice(1).toLowerCase() }
+function roleLabel(role: string) { return role.charAt(0) + role.slice(1).toLowerCase() }
 function actionLabel(action: CodeChartActivity["action"]) { return action.split("_").map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(" ") }
 function formatActivityTime(value: string) {
   const utcValue = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`
   return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(utcValue))
 }
+function formatDocumentDate(value: string) {
+  const utcValue = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`
+  return new Intl.DateTimeFormat("en-PH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Manila" }).format(new Date(utcValue))
+}
 async function saveChartAccess() {
   chartLoading.value = true; chartError.value = ""
-  try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedChartRole.value, selectedPermission.value); await loadChartAccess(); showAccessDialog.value = false } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
+  try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedAccountId.value, selectedPermission.value, selectedExpiration.value ? new Date(selectedExpiration.value).toISOString() : null, selectedReason.value); await loadChartAccess(); showAccessDialog.value = false } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
 }
-function changeChartAccess(role: ClinicalRole) {
-  selectedChartRole.value = role
-  selectedPermission.value = permissionFor(role) ?? "VIEW_ONLY"
+function openAccess(account?: CodeChartAccess) {
+  selectedAccountId.value = account?.demoAccountId ?? chartAccounts.value[0]?.demoAccountId ?? 0
+  selectedPermission.value = account?.permission ?? "VIEW_ONLY"
+  selectedExpiration.value = account?.expiresAt ? account.expiresAt.slice(0, 16) : ""
+  selectedReason.value = account?.reason ?? "CHART_COMPLETION"
   showAccessDialog.value = true
 }
 async function loadDocuments(nextPage = documentPage.value) {
@@ -141,7 +149,7 @@ function formatDate(value: string) {
         class="flex items-center justify-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20"
         :disabled="chartLoading"
         v-if="canManageAccess"
-        @click="showAccessDialog = true"
+        @click="openAccess()"
       >
         <span class="material-symbols-rounded">add</span>Give Access
       </button>
@@ -159,8 +167,8 @@ function formatDate(value: string) {
         <div><h3 class="display text-xl font-bold">Code Chart Access</h3><p class="mt-1 text-sm text-[#8491a3]">{{ patientName }} · Encounter {{ admission.encounterNumber }}</p></div>
       </div>
       <p v-if="chartError" class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p>
-      <div class="mb-5 flex items-center justify-between"><h4 class="font-bold">Authorized roles</h4><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ chartAccess.length }} authorized roles</span></div>
-      <div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="role in chartRoles" :key="role" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ roleLabel(role) }}</td><td class="py-3 text-[#6f8095]">{{ permissionFor(role) === 'FULL_ACCESS' ? 'Full Access' : permissionFor(role) === 'VIEW_ONLY' ? 'View Only' : 'Not authorized' }}</td><td class="py-3 text-right"><button v-if="permissionFor(role)" class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="changeChartAccess(role)">Change Access</button></td></tr></tbody></table></div>
+      <div class="mb-5 flex items-center justify-between"><h4 class="font-bold">Authorized accounts</h4><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ chartAccess.length }} authorized accounts</span></div>
+      <div class="overflow-x-auto"><table class="w-full min-w-[700px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Account</th><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Expiration</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="account in chartAccess" :key="account.demoAccountId" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ account.displayName }}</td><td class="py-3">{{ roleLabel(account.clinicalRole) }}</td><td class="py-3 text-[#6f8095]">{{ account.permission === 'FULL_ACCESS' ? 'Full Access' : 'View Only' }}</td><td class="py-3 text-[#6f8095]">{{ account.expiresAt ? formatActivityTime(account.expiresAt) : 'No expiration' }}</td><td class="py-3 text-right"><button class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="openAccess(account)">Change Access</button></td></tr></tbody></table></div>
       <div v-if="chartActivity.length" class="mt-6 border-t border-[#edf1f5] pt-5"><h4 class="mb-3 font-bold">Access activity</h4><div class="space-y-2 text-sm"><div v-for="item in chartActivity.slice(0, 5)" :key="`${item.createdAt}-${item.clinicalRole}-${item.action}`" class="flex justify-between gap-4 text-[#6f8095]"><span>{{ actionLabel(item.action) }} · {{ roleLabel(item.clinicalRole) }}</span><span>{{ formatActivityTime(item.createdAt) }}</span></div></div></div>
     </section>
     <div
@@ -224,7 +232,7 @@ function formatDate(value: string) {
                   </div>
                   <div>
                     <div class="font-bold text-[#263650]">
-                      {{ doc.documentName || doc.fileName }}
+                      {{ doc.fileName }}
                     </div>
                     <div class="mt-1 text-xs text-[#8a98aa]">
                       Document #{{ String(doc.documentId).padStart(4, "0") }}
@@ -240,7 +248,7 @@ function formatDate(value: string) {
                 >
               </td>
               <td class="px-6 py-5 text-[#53637a]">
-                {{ formatDate(doc.documentDate) }}
+                {{ formatDocumentDate(doc.documentDate) }}
               </td>
               <td class="px-6 py-5 text-[#53637a]">{{ doc.uploadedBy }}</td>
               <td class="px-6 py-5">
@@ -312,11 +320,11 @@ function formatDate(value: string) {
       </div>
       <p v-if="chartError" class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p>
       <div class="mb-5 flex items-center justify-between"><h4 class="font-bold">Authorized roles</h4><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ chartAccess.length }} authorized roles</span></div>
-      <div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="role in chartRoles" :key="role" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ roleLabel(role) }}</td><td class="py-3 text-[#6f8095]">{{ permissionFor(role) === 'FULL_ACCESS' ? 'Full Access' : permissionFor(role) === 'VIEW_ONLY' ? 'View Only' : 'Not authorized' }}</td><td class="py-3 text-right"><button v-if="permissionFor(role)" class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="changeChartAccess(role)">Change Access</button></td></tr></tbody></table></div>
+      <div class="overflow-x-auto"><table class="w-full min-w-[700px] text-left text-sm"><thead class="text-xs uppercase tracking-wider text-[#91a0b2]"><tr><th class="pb-3">Account</th><th class="pb-3">Role</th><th class="pb-3">Permission</th><th class="pb-3">Expiration</th><th class="pb-3">Action</th></tr></thead><tbody><tr v-for="account in chartAccess" :key="account.demoAccountId" class="border-t border-[#edf1f5]"><td class="py-3 font-semibold">{{ account.displayName }}</td><td class="py-3">{{ roleLabel(account.clinicalRole) }}</td><td class="py-3 text-[#6f8095]">{{ account.permission === 'FULL_ACCESS' ? 'Full Access' : 'View Only' }}</td><td class="py-3 text-[#6f8095]">{{ account.expiresAt ? formatActivityTime(account.expiresAt) : 'No expiration' }}</td><td class="py-3 text-right"><button class="text-xs font-bold text-[#36586b]" :disabled="chartLoading" @click="openAccess(account)">Change Access</button></td></tr></tbody></table></div>
       <div v-if="chartActivity.length" class="mt-6 border-t border-[#edf1f5] pt-5"><h4 class="mb-3 font-bold">Access activity</h4><div class="space-y-2 text-sm"><div v-for="item in chartActivity.slice(0, 5)" :key="`${item.createdAt}-${item.clinicalRole}-${item.action}`" class="flex justify-between gap-4 text-[#6f8095]"><span>{{ actionLabel(item.action) }} · {{ roleLabel(item.clinicalRole) }}</span><span>{{ formatActivityTime(item.createdAt) }}</span></div></div></div>
     </section>
       <div v-if="showAccessDialog" class="fixed inset-0 z-50 grid place-items-center bg-[#0b1425]/60 p-4 backdrop-blur-sm" @click.self="showAccessDialog = false">
-      <div class="w-full max-w-[520px] rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Code Chart Access</div><h2 class="display text-2xl font-bold">Give Access</h2><p class="mt-1 text-sm text-[#7b8799]">{{ patientName }} · Encounter {{ admission?.encounterNumber }}</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="showAccessDialog = false"><span class="material-symbols-rounded">close</span></button></div><div class="space-y-5"><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Clinical role</span><select v-model="selectedChartRole" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option v-for="role in chartRoles" :key="role" :value="role">{{ roleLabel(role) }}</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Permission</span><select v-model="selectedPermission" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="VIEW_ONLY">View Only</option><option value="FULL_ACCESS">Full Access</option></select></label><p v-if="chartError" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p></div><div class="mt-7 flex justify-end gap-3"><button class="rounded-xl px-4 py-3 text-sm font-bold text-[#69778d]" @click="showAccessDialog = false">Cancel</button><button class="flex items-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20 disabled:opacity-50" :disabled="chartLoading" @click="saveChartAccess"><span class="material-symbols-rounded">add</span>Give Access</button></div></div>
+      <div class="w-full max-w-[520px] rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Code Chart Access</div><h2 class="display text-2xl font-bold">Give Access</h2><p class="mt-1 text-sm text-[#7b8799]">{{ patientName }} · Encounter {{ admission?.encounterNumber }}</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="showAccessDialog = false"><span class="material-symbols-rounded">close</span></button></div><div class="space-y-5"><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">User</span><select v-model="selectedAccountId" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option v-for="account in chartAccounts" :key="account.demoAccountId" :value="account.demoAccountId">{{ account.displayName }} · {{ account.clinicalRole }}</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Permission</span><select v-model="selectedPermission" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="VIEW_ONLY">View Only</option><option value="FULL_ACCESS">Full Access</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Expiration date</span><input v-model="selectedExpiration" type="datetime-local" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm" /></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Reason</span><select v-model="selectedReason" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="CHART_COMPLETION">Chart Completion</option><option value="FOR_REVIEW">For Review</option></select></label><p v-if="chartError" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p></div><div class="mt-7 flex justify-end gap-3"><button class="rounded-xl px-4 py-3 text-sm font-bold text-[#69778d]" @click="showAccessDialog = false">Cancel</button><button class="flex items-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20 disabled:opacity-50" :disabled="chartLoading" @click="saveChartAccess"><span class="material-symbols-rounded">add</span>Give Access</button></div></div>
     </div>
     <UploadDocumentDialog
       v-if="showUpload"

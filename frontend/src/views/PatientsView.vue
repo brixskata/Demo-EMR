@@ -4,6 +4,8 @@ import { RouterLink } from "vue-router";
 import { api, type Patient } from "../services/api";
 const patients = ref<Patient[]>([]);
 const search = ref("");
+const patientType = ref("");
+const sort = ref<"name_asc" | "name_desc">("name_asc");
 const page = ref(1);
 const pageSize = 5;
 const total = ref(0);
@@ -14,7 +16,7 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 async function load(nextPage = page.value) {
   loading.value = true;
   try {
-    const result = await api.patients({ page: nextPage, pageSize, search: search.value });
+    const result = await api.patients({ page: nextPage, pageSize, search: search.value, type: patientType.value, sort: sort.value });
     patients.value = result.items;
     page.value = result.page;
     total.value = result.total;
@@ -30,6 +32,8 @@ function searchPatients() {
   page.value = 1;
   searchTimer = setTimeout(() => { void load(1); }, 300);
 }
+function filtersChanged() { page.value = 1; void load(1); }
+function clearFilters() { search.value = ""; patientType.value = ""; sort.value = "name_asc"; page.value = 1; void load(1); }
 function goToPage(nextPage: number) { if (nextPage >= 1 && nextPage <= totalPages.value && nextPage !== page.value) void load(nextPage); }
 onMounted(load);
 onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
@@ -86,15 +90,12 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
             Select a patient to view admissions and documents
           </p>
         </div>
-        <label
-          class="flex items-center gap-2 rounded-xl border border-[#e1e8f0] px-3 py-2 text-sm text-[#8491a3] sm:w-72"
-          ><span class="material-symbols-rounded text-base">search</span
-          ><input
-            v-model="search"
-            class="w-full outline-none"
-            placeholder="Search by name or ID"
-            @input="searchPatients"
-        /></label>
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="flex items-center gap-2 rounded-xl border border-[#e1e8f0] px-3 py-2 text-sm text-[#8491a3] sm:w-72"><span class="material-symbols-rounded text-base">search</span><input v-model="search" class="w-full outline-none" placeholder="Search by name or ID" @input="searchPatients" /></label>
+          <label class="text-xs font-bold text-[#69778d]">Type<select v-model="patientType" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="">All Types</option><option value="Inpatient">Inpatient</option><option value="Outpatient">Outpatient</option><option value="ER">ER</option></select></label>
+          <label class="text-xs font-bold text-[#69778d]">Sort<select v-model="sort" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="name_asc">Patient Name A–Z</option><option value="name_desc">Patient Name Z–A</option></select></label>
+          <button class="px-2 py-2 text-xs font-bold text-[#36586b] hover:underline" @click="clearFilters">Clear Filters</button>
+        </div>
       </div>
       <div v-if="loading" class="p-10 text-center text-sm text-[#8290a4]">
         Loading patients…
@@ -115,7 +116,8 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
               <th class="px-6 py-4">Patient</th>
               <th class="px-6 py-4">Patient number</th>
               <th class="px-6 py-4">Date of birth</th>
-              <th class="px-6 py-4">Sex</th>
+              <th class="px-6 py-4">Gender</th>
+              <th class="px-6 py-4">Type</th>
               <th class="px-6 py-4">Admissions</th>
               <th></th>
             </tr>
@@ -152,7 +154,8 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
               <td class="px-6 py-5 text-[#53637a]">
                 {{ patient.dateOfBirth }}
               </td>
-              <td class="px-6 py-5 text-[#53637a]">{{ patient.sex }}</td>
+              <td class="px-6 py-5"><span class="material-symbols-rounded text-2xl" :style="{ color: patient.sex.toLowerCase() === 'female' ? '#e58bb2' : patient.sex.toLowerCase() === 'male' ? '#4f9bd6' : '#8491a3' }">{{ patient.sex.toLowerCase() === 'female' ? 'female' : patient.sex.toLowerCase() === 'male' ? 'male' : 'person' }}</span></td>
+              <td class="px-6 py-5"><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ patient.patientType }}</span></td>
               <td class="px-6 py-5">
                 <span
                   class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]"

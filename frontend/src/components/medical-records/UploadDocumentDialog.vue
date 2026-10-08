@@ -6,8 +6,6 @@ const props = defineProps<{ admissionId: number; patientName: string }>()
 const emit = defineEmits<{ saved: []; close: [] }>()
 const types = ['Consolidated Medical Record', 'Medical Certificate', 'Laboratory Result', 'Imaging Result', 'Discharge Summary', 'Clinical Notes', 'Prescription', 'Other']
 const documentType = ref(types[0] ?? 'Other')
-const documentName = ref('')
-const documentDate = ref(new Date().toISOString().slice(0, 10))
 const file = ref<File>()
 const saving = ref(false)
 const submitted = ref(false)
@@ -17,10 +15,9 @@ function pick(event: Event) { file.value = (event.target as HTMLInputElement).fi
 async function toBase64(input: File): Promise<string> { const bytes = new Uint8Array(await input.arrayBuffer()); const chunkSize = 0x8000; let binary = ''; for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)); return btoa(binary) }
 async function save() {
   if (saving.value || submitted.value) return
-  if (!documentName.value.trim()) { error.value = 'Enter a document name.'; return }
   if (!file.value) { error.value = 'Choose a file first.'; return }
   saving.value = true; error.value = ''
-  try { const base64 = await toBase64(file.value); await api.createDocument({ admissionId: props.admissionId, documentType: documentType.value, documentName: documentName.value, documentDate: documentDate.value, fileName: file.value.name, uploadedBy: 'Records Staff', contentBase64: base64 }); submitted.value = true; emit('saved') } catch (e) { error.value = e instanceof Error ? e.message : 'Could not save document' } finally { saving.value = false }
+  try { const base64 = await toBase64(file.value); await api.createDocument({ admissionId: props.admissionId, documentType: documentType.value, documentDate: new Date().toISOString(), fileName: file.value.name, uploadedBy: 'Records Staff', contentBase64: base64 }); submitted.value = true; emit('saved') } catch (e) { error.value = e instanceof Error ? e.message : 'Could not save document' } finally { saving.value = false }
 }
 </script>
 <template>
@@ -29,8 +26,6 @@ async function save() {
       <div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Document intake</div><h2 class="display text-2xl font-bold">Add document</h2><p class="mt-1 text-sm text-[#7b8799]">For {{ patientName }} · patient record workflow</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="emit('close')"><span class="material-symbols-rounded">close</span></button></div>
       <div class="space-y-5">
         <label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Document type</span><select v-model="documentType" class="w-full rounded-xl border border-[#dde5ee] bg-white px-4 py-3 text-sm outline-none focus:border-[#39b9a6]"><option v-for="type in types" :key="type">{{ type }}</option></select></label>
-        <label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Document Name</span><input v-model="documentName" required placeholder="Enter document name" class="w-full rounded-xl border border-[#dde5ee] bg-white px-4 py-3 text-sm outline-none focus:border-[#39b9a6]" /></label>
-        <label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Document date</span><input v-model="documentDate" type="date" class="w-full rounded-xl border border-[#dde5ee] px-4 py-3 text-sm outline-none focus:border-[#39b9a6]" /></label>
         <label class="flex cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed border-[#c9d9e5] bg-[#f8fbfc] px-6 py-8 text-center hover:border-[#48bbaa]"><span class="material-symbols-rounded mb-2 text-3xl text-[#27aa97]">upload_file</span><span class="text-sm font-bold text-[#34445b]">{{ file?.name ?? 'Choose a file' }}</span><span class="mt-1 text-xs text-[#8a98aa]">Files are stored locally under backend/uploads/demo</span><input type="file" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.txt" @change="pick" /></label>
         <p v-if="error" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</p>
       </div>
