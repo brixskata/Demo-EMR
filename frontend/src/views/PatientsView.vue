@@ -5,6 +5,9 @@ import { api, type Patient } from "../services/api";
 const patients = ref<Patient[]>([]);
 const search = ref("");
 const patientType = ref("");
+const gender = ref("");
+const dateOfBirthFrom = ref("");
+const dateOfBirthTo = ref("");
 const sort = ref<"name_asc" | "name_desc">("name_asc");
 const page = ref(1);
 const pageSize = 5;
@@ -16,7 +19,7 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 async function load(nextPage = page.value) {
   loading.value = true;
   try {
-    const result = await api.patients({ page: nextPage, pageSize, search: search.value, type: patientType.value, sort: sort.value });
+    const result = await api.patients({ page: nextPage, pageSize, search: search.value, type: patientType.value, gender: gender.value, dateOfBirthFrom: dateOfBirthFrom.value, dateOfBirthTo: dateOfBirthTo.value, sort: sort.value });
     patients.value = result.items;
     page.value = result.page;
     total.value = result.total;
@@ -33,7 +36,7 @@ function searchPatients() {
   searchTimer = setTimeout(() => { void load(1); }, 300);
 }
 function filtersChanged() { page.value = 1; void load(1); }
-function clearFilters() { search.value = ""; patientType.value = ""; sort.value = "name_asc"; page.value = 1; void load(1); }
+function clearFilters() { search.value = ""; patientType.value = ""; gender.value = ""; dateOfBirthFrom.value = ""; dateOfBirthTo.value = ""; sort.value = "name_asc"; page.value = 1; void load(1); }
 function goToPage(nextPage: number) { if (nextPage >= 1 && nextPage <= totalPages.value && nextPage !== page.value) void load(nextPage); }
 onMounted(load);
 onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
@@ -81,20 +84,23 @@ onBeforeUnmount(() => { if (searchTimer) clearTimeout(searchTimer); });
     <div
       class="overflow-hidden rounded-2xl border border-[#e5ebf2] bg-white shadow-sm"
     >
-      <div
-        class="flex flex-col gap-3 border-b border-[#edf1f5] p-5 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div>
-          <h3 class="font-bold">All patients</h3>
-          <p class="mt-1 text-xs text-[#8b98ab]">
-            Select a patient to view admissions and documents
-          </p>
+      <div class="border-b border-[#edf1f5] p-5">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="font-bold">All patients</h3>
+            <p class="mt-1 text-xs text-[#8b98ab]">Select a patient to view admissions and documents</p>
+          </div>
+          <span class="text-xs font-semibold text-[#8491a3]">{{ total }} patients</span>
         </div>
-        <div class="flex flex-wrap items-end gap-2">
-          <label class="flex items-center gap-2 rounded-xl border border-[#e1e8f0] px-3 py-2 text-sm text-[#8491a3] sm:w-72"><span class="material-symbols-rounded text-base">search</span><input v-model="search" class="w-full outline-none" placeholder="Search by name or ID" @input="searchPatients" /></label>
-          <label class="text-xs font-bold text-[#69778d]">Type<select v-model="patientType" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="">All Types</option><option value="Inpatient">Inpatient</option><option value="Outpatient">Outpatient</option><option value="ER">ER</option></select></label>
-          <label class="text-xs font-bold text-[#69778d]">Sort<select v-model="sort" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="name_asc">Patient Name A–Z</option><option value="name_desc">Patient Name Z–A</option></select></label>
-          <button class="px-2 py-2 text-xs font-bold text-[#36586b] hover:underline" @click="clearFilters">Clear Filters</button>
+        <label class="mt-4 flex w-full items-center gap-2 rounded-xl border border-[#e1e8f0] px-3 py-2 text-sm text-[#8491a3]"><span class="material-symbols-rounded text-base">search</span><input v-model="search" class="w-full outline-none" placeholder="Search by name or patient ID" @input="searchPatients" /></label>
+        <div class="mt-4 flex flex-wrap items-end gap-2">
+          <span class="mr-1 pb-2 text-xs font-bold text-[#69778d]">Filters</span>
+          <label class="flex items-center whitespace-nowrap text-xs font-bold text-[#69778d]">Patient Type<select v-model="patientType" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="">All Types</option><option value="Inpatient">Inpatient</option><option value="Outpatient">Outpatient</option><option value="ER">ER</option></select></label>
+          <label class="flex items-center whitespace-nowrap text-xs font-bold text-[#69778d]">Gender<select v-model="gender" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="">All Genders</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
+          <label class="flex items-center whitespace-nowrap text-xs font-bold text-[#69778d]">Birth From<input v-model="dateOfBirthFrom" type="date" class="ml-2 w-36 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged" /></label>
+          <label class="flex items-center whitespace-nowrap text-xs font-bold text-[#69778d]">Birth To<input v-model="dateOfBirthTo" type="date" class="ml-2 w-36 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged" /></label>
+          <label class="flex items-center whitespace-nowrap text-xs font-bold text-[#69778d]">Sort<select v-model="sort" class="ml-2 rounded-xl border border-[#e1e8f0] bg-white px-3 py-2 text-sm font-normal text-[#53637a]" @change="filtersChanged"><option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option></select></label>
+          <button class="whitespace-nowrap px-2 py-2 text-xs font-bold text-[#36586b] hover:underline" @click="clearFilters">Clear filters</button>
         </div>
       </div>
       <div v-if="loading" class="p-10 text-center text-sm text-[#8290a4]">

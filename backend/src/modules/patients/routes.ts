@@ -10,6 +10,9 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(5),
   search: z.string().trim().max(120).default(''),
   type: z.enum(['', 'Inpatient', 'Outpatient', 'ER']).default(''),
+  gender: z.enum(['', 'Male', 'Female']).default(''),
+  dateOfBirthFrom: z.coerce.date().optional(),
+  dateOfBirthTo: z.coerce.date().optional(),
   sort: z.enum(['name_asc', 'name_desc']).default('name_asc'),
 })
 export const patientRouter = Router()

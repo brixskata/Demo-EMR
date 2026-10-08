@@ -18,10 +18,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data
 }
 export const api = {
-  patients: (params: { page?: number; pageSize?: number; search?: string; type?: string; sort?: 'name_asc' | 'name_desc' } = {}) => {
+  patients: (params: { page?: number; pageSize?: number; search?: string; type?: string; gender?: string; dateOfBirthFrom?: string; dateOfBirthTo?: string; sort?: 'name_asc' | 'name_desc' } = {}) => {
     const query = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 5) })
     if (params.search) query.set('search', params.search)
     if (params.type) query.set('type', params.type)
+    if (params.gender) query.set('gender', params.gender)
+    if (params.dateOfBirthFrom) query.set('dateOfBirthFrom', params.dateOfBirthFrom)
+    if (params.dateOfBirthTo) query.set('dateOfBirthTo', params.dateOfBirthTo)
     if (params.sort) query.set('sort', params.sort)
     return request<PatientListResult>(`/patients?${query.toString()}`)
   },

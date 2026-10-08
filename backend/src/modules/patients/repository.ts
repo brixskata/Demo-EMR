@@ -5,7 +5,7 @@ export type Patient = {
   dateOfBirth: string; sex: string; patientType?: 'Inpatient' | 'Outpatient' | 'ER'; createdAt: string; updatedAt: string; admissionCount?: number
 }
 
-export type PatientListQuery = { page: number; pageSize: number; search: string; type: '' | 'Inpatient' | 'Outpatient' | 'ER'; sort: 'name_asc' | 'name_desc' }
+export type PatientListQuery = { page: number; pageSize: number; search: string; type: '' | 'Inpatient' | 'Outpatient' | 'ER'; gender: '' | 'Male' | 'Female'; dateOfBirthFrom?: Date | undefined; dateOfBirthTo?: Date | undefined; sort: 'name_asc' | 'name_desc' }
 export type PatientListResult = { items: Patient[]; page: number; pageSize: number; total: number; totalPages: number }
 
 export async function listPatients(query: PatientListQuery): Promise<PatientListResult> {
@@ -14,6 +14,9 @@ export async function listPatients(query: PatientListQuery): Promise<PatientList
   const result = await pool.request()
     .input('search', sql.NVarChar(120), query.search ? `%${query.search}%` : null)
     .input('type', sql.VarChar(20), query.type || null)
+    .input('gender', sql.VarChar(20), query.gender || null)
+    .input('dateOfBirthFrom', sql.Date, query.dateOfBirthFrom ?? null)
+    .input('dateOfBirthTo', sql.Date, query.dateOfBirthTo ?? null)
     .input('sort', sql.VarChar(20), query.sort || 'name_asc')
     .input('offset', sql.Int, offset)
     .input('pageSize', sql.Int, query.pageSize)
@@ -26,7 +29,10 @@ export async function listPatients(query: PatientListQuery): Promise<PatientList
       CASE WHEN MAX(CASE WHEN UPPER(a.Ward) LIKE '%ER%' OR UPPER(a.Ward) LIKE '%EMERGENCY%' THEN 1 ELSE 0 END) = 1 THEN 'ER'
         WHEN MAX(CASE WHEN UPPER(a.Status) = 'ACTIVE' THEN 1 ELSE 0 END) = 1 THEN 'Inpatient' ELSE 'Outpatient' END AS patientType
       FROM dbo.Patient p LEFT JOIN dbo.Admission a ON a.PatientId = p.PatientId
-      WHERE @search IS NULL OR p.PatientNumber LIKE @search OR p.FirstName LIKE @search OR p.LastName LIKE @search
+      WHERE (@search IS NULL OR p.PatientNumber LIKE @search OR p.FirstName LIKE @search OR p.LastName LIKE @search)
+        AND (@gender IS NULL OR p.Sex = @gender)
+        AND (@dateOfBirthFrom IS NULL OR p.DateOfBirth >= @dateOfBirthFrom)
+        AND (@dateOfBirthTo IS NULL OR p.DateOfBirth <= @dateOfBirthTo)
       GROUP BY p.PatientId, p.PatientNumber, p.FirstName, p.LastName, p.DateOfBirth, p.Sex, p.CreatedAt, p.UpdatedAt
     )
     SELECT * FROM PatientResults
@@ -41,7 +47,10 @@ export async function listPatients(query: PatientListQuery): Promise<PatientList
         CASE WHEN MAX(CASE WHEN UPPER(a.Ward) LIKE '%ER%' OR UPPER(a.Ward) LIKE '%EMERGENCY%' THEN 1 ELSE 0 END) = 1 THEN 'ER'
           WHEN MAX(CASE WHEN UPPER(a.Status) = 'ACTIVE' THEN 1 ELSE 0 END) = 1 THEN 'Inpatient' ELSE 'Outpatient' END AS patientType
       FROM dbo.Patient p LEFT JOIN dbo.Admission a ON a.PatientId = p.PatientId
-      WHERE @search IS NULL OR p.PatientNumber LIKE @search OR p.FirstName LIKE @search OR p.LastName LIKE @search
+      WHERE (@search IS NULL OR p.PatientNumber LIKE @search OR p.FirstName LIKE @search OR p.LastName LIKE @search)
+        AND (@gender IS NULL OR p.Sex = @gender)
+        AND (@dateOfBirthFrom IS NULL OR p.DateOfBirth >= @dateOfBirthFrom)
+        AND (@dateOfBirthTo IS NULL OR p.DateOfBirth <= @dateOfBirthTo)
       GROUP BY p.PatientId, p.PatientNumber, p.FirstName, p.LastName, p.DateOfBirth, p.Sex, p.CreatedAt, p.UpdatedAt
     )
     SELECT COUNT(*) AS total FROM PatientResults WHERE @type IS NULL OR patientType = @type;`)
