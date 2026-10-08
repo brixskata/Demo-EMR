@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getPatient, listPatients } from './repository.ts'
-import { listAdmissions } from '../admissions/repository.ts'
+import { listAdmissions, listAdmissionsPage } from '../admissions/repository.ts'
 
 const idSchema = z.coerce.number().int().positive()
 const listQuerySchema = z.object({
@@ -19,6 +19,11 @@ export const patientRouter = Router()
 patientRouter.get('/', asyncHandler(async (req, res) => {
   const query = listQuerySchema.parse(req.query)
   res.json({ ok: true, data: await listPatients(query) })
+}))
+patientRouter.get('/:patientId/admissions', asyncHandler(async (req, res) => {
+  const patientId = idSchema.parse(req.params.patientId)
+  const query = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(10) }).parse(req.query)
+  res.json({ ok: true, data: await listAdmissionsPage(patientId, query.page, query.pageSize) })
 }))
 patientRouter.get('/:patientId', asyncHandler(async (req, res) => {
   const patientId = idSchema.parse(req.params.patientId)

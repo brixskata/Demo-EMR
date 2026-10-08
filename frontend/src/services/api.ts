@@ -5,6 +5,7 @@ export type Admission = { admissionId: number; patientId: number; admissionNumbe
 export type MedicalDocument = { documentId: number; admissionId: number; documentType: string; fileName: string; documentDate: string; uploadedBy: string; uploadedAt: string; status: string; storagePath: string }
 export type PatientListResult = { items: Patient[]; page: number; pageSize: number; total: number; totalPages: number }
 export type DocumentListResult = { items: MedicalDocument[]; page: number; pageSize: number; total: number; totalPages: number }
+export type AdmissionListResult = { items: Admission[]; page: number; pageSize: number; total: number; totalPages: number }
 export type ClinicalRole = 'PHYSICIAN' | 'CONSULTANT' | 'RESIDENT' | 'INTERN' | 'NURSE'
 export type ChartPermission = 'VIEW_ONLY' | 'FULL_ACCESS'
 export type DemoAccount = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole }
@@ -29,6 +30,7 @@ export const api = {
     return request<PatientListResult>(`/patients?${query.toString()}`)
   },
   patient: (id: number) => request<Patient & { admissions: Admission[] }>(`/patients/${id}`),
+  patientAdmissions: (id: number, params: { page?: number; pageSize?: number } = {}) => request<AdmissionListResult>(`/patients/${id}/admissions?page=${params.page ?? 1}&pageSize=${params.pageSize ?? 10}`),
   admission: (id: number) => request<Admission & { documents: MedicalDocument[] }>(`/admissions/${id}`),
   codeChartAccess: (admissionId: number) => request<{ access: CodeChartAccess[]; activity: CodeChartActivity[]; accounts: DemoAccount[] }>(`/admissions/${admissionId}/code-chart-access`),
   setCodeChartAccess: (admissionId: number, demoAccountId: number, permission: ChartPermission, expiresAt: string | null, reason: string) => request<CodeChartAccess>(`/admissions/${admissionId}/code-chart-access/${demoAccountId}`, { method: 'PUT', body: JSON.stringify({ demoAccountId, permission, expiresAt, reason }) }),

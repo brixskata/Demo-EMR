@@ -7,9 +7,20 @@ const route = useRoute()
 const patient = ref<Patient & { admissions: Admission[] }>()
 const loading = ref(true)
 const error = ref('')
+const admissionPage = ref(1)
+const admissionPageSize = 10
+const admissionTotal = ref(0)
+const admissionTotalPages = ref(0)
+async function loadAdmissions(nextPage = admissionPage.value) {
+  const result = await api.patientAdmissions(Number(route.params.patientId), { page: nextPage, pageSize: admissionPageSize })
+  if (patient.value) patient.value.admissions = result.items
+  admissionPage.value = result.page
+  admissionTotal.value = result.total
+  admissionTotalPages.value = result.totalPages
+}
 
 onMounted(async () => {
-  try { patient.value = await api.patient(Number(route.params.patientId)) } catch (e) { error.value = e instanceof Error ? e.message : 'Could not load patient' } finally { loading.value = false }
+  try { patient.value = await api.patient(Number(route.params.patientId)); await loadAdmissions(1) } catch (e) { error.value = e instanceof Error ? e.message : 'Could not load patient' } finally { loading.value = false }
 })
 
 function age(dateOfBirth: string) {
@@ -39,8 +50,8 @@ function formatDate(value: string | null) {
       </div>
     </div>
 
-    <div class="mb-4 flex items-end justify-between"><div><h3 class="display text-xl font-bold">Admissions</h3><p class="mt-1 text-sm text-[#8491a3]">Documents are organized within each admission.</p></div><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ patient.admissions.length }} admissions</span></div>
-    <div class="overflow-hidden rounded-2xl border border-[#e5ebf2] bg-white shadow-sm"><div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left text-sm"><thead class="bg-[#fafbfd] text-[11px] font-bold uppercase tracking-wider text-[#91a0b2]"><tr><th class="px-5 py-4">Admission Number</th><th class="px-5 py-4">Encounter Number</th><th class="px-5 py-4">Date Admitted</th><th class="px-5 py-4">Date Discharged</th><th class="px-5 py-4">Ward</th><th class="px-5 py-4">Status</th><th class="px-5 py-4 text-right">Action</th></tr></thead><tbody><tr v-for="admission in patient.admissions" :key="admission.admissionId" class="border-t border-[#edf1f5]"><td class="px-5 py-4 font-bold">{{ admission.admissionNumber }}</td><td class="px-5 py-4 text-[#536b88]">{{ admission.encounterNumber }}</td><td class="px-5 py-4">{{ formatDate(admission.admissionDate) }}</td><td class="px-5 py-4">{{ formatDate(admission.dischargeDate) }}</td><td class="px-5 py-4">{{ admission.ward }}</td><td class="px-5 py-4"><span class="rounded-full px-3 py-1 text-[11px] font-bold" :class="admission.status === 'Active' ? 'bg-[#fff5d9] text-[#b88308]' : 'bg-[#edf8f6] text-[#198e7e]'">{{ admission.status }}</span></td><td class="px-5 py-4 text-right"><RouterLink :to="`/admissions/${admission.admissionId}`" class="inline-flex items-center gap-1 text-xs font-bold text-[#1c9f8d]">View admission <span class="material-symbols-rounded text-base">arrow_forward</span></RouterLink></td></tr></tbody></table></div></div>
+    <div class="mb-4 flex items-end justify-between"><div><h3 class="display text-xl font-bold">Admissions</h3><p class="mt-1 text-sm text-[#8491a3]">Documents are organized within each admission.</p></div><span class="rounded-full bg-[#edf8f6] px-3 py-1 text-xs font-bold text-[#198e7e]">{{ admissionTotal }} admissions</span></div>
+    <div class="overflow-hidden rounded-2xl border border-[#e5ebf2] bg-white shadow-sm"><div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left text-sm"><thead class="bg-[#fafbfd] text-[11px] font-bold uppercase tracking-wider text-[#91a0b2]"><tr><th class="px-5 py-4">Admission Number</th><th class="px-5 py-4">Encounter Number</th><th class="px-5 py-4">Date Admitted</th><th class="px-5 py-4">Date Discharged</th><th class="px-5 py-4">Ward</th><th class="px-5 py-4">Status</th><th class="px-5 py-4 text-right">Action</th></tr></thead><tbody><tr v-for="admission in patient.admissions" :key="admission.admissionId" class="border-t border-[#edf1f5]"><td class="px-5 py-4 font-bold">{{ admission.admissionNumber }}</td><td class="px-5 py-4 text-[#536b88]">{{ admission.encounterNumber }}</td><td class="px-5 py-4">{{ formatDate(admission.admissionDate) }}</td><td class="px-5 py-4">{{ formatDate(admission.dischargeDate) }}</td><td class="px-5 py-4">{{ admission.ward }}</td><td class="px-5 py-4"><span class="rounded-full px-3 py-1 text-[11px] font-bold" :class="admission.status === 'Active' ? 'bg-[#fff5d9] text-[#b88308]' : 'bg-[#edf8f6] text-[#198e7e]'">{{ admission.status }}</span></td><td class="px-5 py-4 text-right"><RouterLink :to="`/admissions/${admission.admissionId}`" class="inline-flex items-center gap-1 text-xs font-bold text-[#1c9f8d]">View admission <span class="material-symbols-rounded text-base">arrow_forward</span></RouterLink></td></tr></tbody></table></div><div class="flex flex-col gap-3 border-t border-[#edf1f5] px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between"><span class="text-[#8491a3]">Showing {{ admissionTotal ? (admissionPage - 1) * admissionPageSize + 1 : 0 }}–{{ Math.min(admissionPage * admissionPageSize, admissionTotal) }} of {{ admissionTotal }} admissions</span><div class="flex items-center gap-1"><button class="rounded-lg px-3 py-2 font-semibold text-[#53637a] disabled:cursor-not-allowed disabled:opacity-40" :disabled="admissionPage <= 1" @click="loadAdmissions(admissionPage - 1)">Previous</button><button v-for="pageNumber in admissionTotalPages" :key="pageNumber" class="grid h-9 min-w-9 place-items-center rounded-lg px-2 font-semibold" :class="pageNumber === admissionPage ? 'bg-[#e8f1f5] text-[#36586b]' : 'text-[#53637a]'" @click="loadAdmissions(pageNumber)">{{ pageNumber }}</button><button class="rounded-lg px-3 py-2 font-semibold text-[#53637a] disabled:cursor-not-allowed disabled:opacity-40" :disabled="admissionPage >= admissionTotalPages" @click="loadAdmissions(admissionPage + 1)">Next</button></div></div></div>
   </section>
   <div v-else-if="loading" class="p-12 text-center text-sm text-[#8491a3]">Loading patient record…</div>
   <div v-else class="rounded-xl bg-red-50 p-5 text-red-700">{{ error }}</div>

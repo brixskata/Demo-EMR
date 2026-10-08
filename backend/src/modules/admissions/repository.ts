@@ -4,6 +4,7 @@ export type Admission = {
   admissionId: number; patientId: number; admissionNumber: string; encounterNumber: string; admissionDate: string
   dischargeDate: string | null; ward: string; status: string; documentCount?: number
 }
+export type AdmissionListResult = { items: Admission[]; page: number; pageSize: number; total: number; totalPages: number }
 export type ClinicalRole = 'PHYSICIAN' | 'CONSULTANT' | 'RESIDENT' | 'INTERN' | 'NURSE'
 export type ChartPermission = 'VIEW_ONLY' | 'FULL_ACCESS'
 export type DemoAccount = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole }
@@ -22,6 +23,23 @@ export async function listAdmissions(patientId: number): Promise<Admission[]> {
     GROUP BY a.AdmissionId, a.PatientId, a.AdmissionNumber, a.EncounterNumber, a.AdmissionDate, a.DischargeDate, a.Ward, a.Status
     ORDER BY a.AdmissionDate DESC`)
   return result.recordset
+}
+
+export async function listAdmissionsPage(patientId: number, page: number, pageSize: number): Promise<AdmissionListResult> {
+  const pool = await getPool()
+  const offset = (page - 1) * pageSize
+  const result = await pool.request().input('patientId', sql.Int, patientId).input('offset', sql.Int, offset).input('pageSize', sql.Int, pageSize).query<Admission & { total?: number }>(`
+    SELECT a.AdmissionId AS admissionId, a.PatientId AS patientId, a.AdmissionNumber AS admissionNumber, a.EncounterNumber AS encounterNumber,
+      CONVERT(varchar(33), a.AdmissionDate, 127) AS admissionDate, CONVERT(varchar(33), a.DischargeDate, 127) AS dischargeDate,
+      a.Ward AS ward, a.Status AS status, COUNT(d.DocumentId) AS documentCount
+    FROM dbo.Admission a LEFT JOIN dbo.MedicalDocument d ON d.AdmissionId = a.AdmissionId
+    WHERE a.PatientId = @patientId
+    GROUP BY a.AdmissionId, a.PatientId, a.AdmissionNumber, a.EncounterNumber, a.AdmissionDate, a.DischargeDate, a.Ward, a.Status
+    ORDER BY a.AdmissionDate DESC, a.AdmissionId DESC
+    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
+    SELECT COUNT(*) AS total FROM dbo.Admission WHERE PatientId = @patientId;`)
+  const total = Number(result.recordsets[1]?.[0]?.total ?? 0)
+  return { items: result.recordset, page, pageSize, total, totalPages: total ? Math.ceil(total / pageSize) : 0 }
 }
 
 export async function getAdmission(admissionId: number): Promise<Admission | undefined> {
