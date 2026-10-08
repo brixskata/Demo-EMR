@@ -2,7 +2,7 @@ import { Router } from 'express'
 import type { Request } from 'express'
 import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
-import { getDocument, listDocumentsPage, createDocument } from './repository.ts'
+import { getDocument, listDocumentsPage, createDocument, getPatientNumberForAdmission } from './repository.ts'
 import { getCodeChartPermission, recordDocumentActivity, type ClinicalRole } from '../admissions/repository.ts'
 import { requireRole } from '../../shared/authorization/demoAuth.ts'
 import { access, mkdir, writeFile } from 'node:fs/promises'
@@ -16,7 +16,7 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(5),
   search: z.string().trim().max(120).default(''),
 })
-const createSchema = z.object({ admissionId: z.coerce.number().int().positive(), documentType: z.string().min(1).max(80), documentName: z.string().trim().min(1).max(255), fileName: z.string().min(1).max(255), documentDate: z.coerce.date(), uploadedBy: z.string().min(1).max(120), contentBase64: z.string().max(8_000_000).optional() })
+const createSchema = z.object({ admissionId: z.coerce.number().int().positive(), documentType: z.string().min(1).max(80), fileName: z.string().min(1).max(255), documentDate: z.coerce.date(), uploadedBy: z.string().min(1).max(120), contentBase64: z.string().max(8_000_000).optional() })
 const allowedTypes = new Set(['Medical Certificate', 'Laboratory Result', 'Imaging Result', 'Discharge Summary', 'Clinical Notes', 'Prescription', 'Consolidated Medical Record', 'Other'])
 const clinicalRoles = new Set<ClinicalRole>(['PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'])
 async function ensureDocumentAccess(req: Request, admissionId: number, required: 'VIEW_ONLY' | 'FULL_ACCESS'): Promise<void> {
@@ -60,12 +60,15 @@ documentRouter.post('/', requireRole('ADMIN', 'PHYSICIAN', 'CONSULTANT', 'RESIDE
   const input = createSchema.parse(req.body)
   if (!allowedTypes.has(input.documentType)) throw new HttpError(400, 'Unsupported document type')
   await ensureDocumentAccess(req, input.admissionId, 'FULL_ACCESS')
-  const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-180)
-  const storedName = `${crypto.randomUUID()}-${safeName}`
+  const patientNumber = await getPatientNumberForAdmission(input.admissionId)
+  if (!patientNumber) throw new HttpError(404, 'Admission patient not found')
+  const safePatientNumber = patientNumber.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const extension = path.extname(input.fileName).toLowerCase().replace(/[^a-z0-9.]/g, '')
+  const storedName = `${safePatientNumber}_${crypto.randomBytes(6).toString('hex')}${extension}`
   const uploadDir = path.resolve(process.cwd(), 'uploads', 'demo')
   await mkdir(uploadDir, { recursive: true })
   if (input.contentBase64) await writeFile(path.join(uploadDir, storedName), Buffer.from(input.contentBase64, 'base64'))
-  const document = await createDocument({ ...input, documentDate: input.documentDate.toISOString().slice(0, 10), storagePath: `uploads/demo/${storedName}` })
+  const document = await createDocument({ ...input, documentDate: input.documentDate.toISOString(), storagePath: `uploads/demo/${storedName}` })
   if (req.demoRole && clinicalRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(input.admissionId, req.demoRole as ClinicalRole, 'UPLOADED_DOCUMENT')
   res.status(201).json({ ok: true, data: document })
 }))

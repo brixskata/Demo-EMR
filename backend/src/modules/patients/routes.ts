@@ -9,6 +9,8 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(5),
   search: z.string().trim().max(120).default(''),
+  type: z.enum(['', 'Inpatient', 'Outpatient', 'ER']).default(''),
+  sort: z.enum(['name_asc', 'name_desc']).default('name_asc'),
 })
 export const patientRouter = Router()
 patientRouter.get('/', asyncHandler(async (req, res) => {

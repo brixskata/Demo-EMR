@@ -1,7 +1,7 @@
 import { getPool, sql } from '../../database/connection.ts'
 
 export type MedicalDocument = {
-  documentId: number; admissionId: number; documentType: string; documentName: string; fileName: string
+  documentId: number; admissionId: number; documentType: string; fileName: string
   documentDate: string; uploadedBy: string; uploadedAt: string; status: string; storagePath: string
 }
 export type DocumentListQuery = { page: number; pageSize: number; search: string }
@@ -10,8 +10,8 @@ export type DocumentListResult = { items: MedicalDocument[]; page: number; pageS
 export async function listDocuments(admissionId: number): Promise<MedicalDocument[]> {
   const pool = await getPool()
   const result = await pool.request().input('admissionId', sql.Int, admissionId).query<MedicalDocument>(`
-    SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, COALESCE(DocumentName, FileName) AS documentName, FileName AS fileName,
-      CONVERT(char(10), DocumentDate, 23) AS documentDate, UploadedBy AS uploadedBy,
+    SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, FileName AS fileName,
+      CONVERT(varchar(33), DocumentDate, 127) AS documentDate, UploadedBy AS uploadedBy,
       CONVERT(varchar(33), UploadedAt, 127) AS uploadedAt, Status AS status, StoragePath AS storagePath
     FROM dbo.MedicalDocument WHERE AdmissionId = @admissionId ORDER BY DocumentDate DESC, UploadedAt DESC`)
   return result.recordset
@@ -26,8 +26,8 @@ export async function listDocumentsPage(admissionId: number, query: DocumentList
     .input('offset', sql.Int, offset)
     .input('pageSize', sql.Int, query.pageSize)
     .query<MedicalDocument & { total?: number }>(`
-      SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, COALESCE(DocumentName, FileName) AS documentName, FileName AS fileName,
-        CONVERT(char(10), DocumentDate, 23) AS documentDate, UploadedBy AS uploadedBy,
+      SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, FileName AS fileName,
+        CONVERT(varchar(33), DocumentDate, 127) AS documentDate, UploadedBy AS uploadedBy,
         CONVERT(varchar(33), UploadedAt, 127) AS uploadedAt, Status AS status, StoragePath AS storagePath
       FROM dbo.MedicalDocument
       WHERE AdmissionId = @admissionId
@@ -46,24 +46,33 @@ export async function listDocumentsPage(admissionId: number, query: DocumentList
 export async function getDocument(documentId: number): Promise<MedicalDocument | undefined> {
   const pool = await getPool()
   const result = await pool.request().input('documentId', sql.Int, documentId).query<MedicalDocument>(`
-    SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, COALESCE(DocumentName, FileName) AS documentName, FileName AS fileName,
-      CONVERT(char(10), DocumentDate, 23) AS documentDate, UploadedBy AS uploadedBy,
+    SELECT DocumentId AS documentId, AdmissionId AS admissionId, DocumentType AS documentType, FileName AS fileName,
+      CONVERT(varchar(33), DocumentDate, 127) AS documentDate, UploadedBy AS uploadedBy,
       CONVERT(varchar(33), UploadedAt, 127) AS uploadedAt, Status AS status, StoragePath AS storagePath
     FROM dbo.MedicalDocument WHERE DocumentId = @documentId`)
   return result.recordset[0]
 }
 
-export async function createDocument(input: { admissionId: number; documentType: string; documentName: string; fileName: string; documentDate: string; uploadedBy: string; storagePath: string }): Promise<MedicalDocument> {
+export async function getPatientNumberForAdmission(admissionId: number): Promise<string | undefined> {
+  const pool = await getPool()
+  const result = await pool.request().input('admissionId', sql.Int, admissionId).query<{ patientNumber: string }>(`
+    SELECT p.PatientNumber AS patientNumber
+    FROM dbo.Admission a INNER JOIN dbo.Patient p ON p.PatientId = a.PatientId
+    WHERE a.AdmissionId = @admissionId`)
+  return result.recordset[0]?.patientNumber
+}
+
+export async function createDocument(input: { admissionId: number; documentType: string; fileName: string; documentDate: string; uploadedBy: string; storagePath: string }): Promise<MedicalDocument> {
   const pool = await getPool()
   const result = await pool.request()
     .input('admissionId', sql.Int, input.admissionId).input('documentType', sql.NVarChar(80), input.documentType)
-    .input('documentName', sql.NVarChar(255), input.documentName).input('fileName', sql.NVarChar(255), input.fileName).input('documentDate', sql.Date, input.documentDate)
+    .input('fileName', sql.NVarChar(255), input.fileName).input('documentDate', sql.DateTime2(3), new Date(input.documentDate))
     .input('uploadedBy', sql.NVarChar(120), input.uploadedBy).input('storagePath', sql.NVarChar(500), input.storagePath)
-    .query<MedicalDocument>(`INSERT dbo.MedicalDocument (AdmissionId, DocumentType, DocumentName, FileName, DocumentDate, UploadedBy, Status, StoragePath)
+    .query<MedicalDocument>(`INSERT dbo.MedicalDocument (AdmissionId, DocumentType, FileName, DocumentDate, UploadedBy, Status, StoragePath)
       OUTPUT INSERTED.DocumentId AS documentId, INSERTED.AdmissionId AS admissionId, INSERTED.DocumentType AS documentType,
-      COALESCE(INSERTED.DocumentName, INSERTED.FileName) AS documentName, INSERTED.FileName AS fileName, CONVERT(char(10), INSERTED.DocumentDate, 23) AS documentDate,
+      INSERTED.FileName AS fileName, CONVERT(varchar(33), INSERTED.DocumentDate, 127) AS documentDate,
       INSERTED.UploadedBy AS uploadedBy, CONVERT(varchar(33), INSERTED.UploadedAt, 127) AS uploadedAt,
       INSERTED.Status AS status, INSERTED.StoragePath AS storagePath
-      VALUES (@admissionId, @documentType, @documentName, @fileName, @documentDate, @uploadedBy, 'ACTIVE', @storagePath)`)
+      VALUES (@admissionId, @documentType, @fileName, @documentDate, @uploadedBy, 'ACTIVE', @storagePath)`)
   return result.recordset[0]!
 }
