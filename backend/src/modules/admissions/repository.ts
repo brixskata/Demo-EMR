@@ -5,7 +5,7 @@ export type Admission = {
   dischargeDate: string | null; ward: string; status: string; documentCount?: number
 }
 export type AdmissionListResult = { items: Admission[]; page: number; pageSize: number; total: number; totalPages: number }
-export type ClinicalRole = 'PHYSICIAN' | 'CONSULTANT' | 'RESIDENT' | 'INTERN' | 'NURSE'
+export type ClinicalRole = 'ADMIN' | 'AUDITOR' | 'RECORDS_VIEWER'
 export type ChartPermission = 'VIEW_ONLY' | 'FULL_ACCESS'
 export type DemoAccount = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole }
 export type CodeChartAccess = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole; permission: ChartPermission; expiresAt: string | null; reason: string; updatedAt: string }

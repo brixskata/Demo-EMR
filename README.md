@@ -23,7 +23,7 @@ cd frontend
 npm run dev      # http://localhost:5173
 ```
 
-The demo role is selectable in the top bar. `RECORDS_STAFF`, `NURSE`, and `ADMIN` can upload demo document metadata; `PHYSICIAN` is read-only.
+The demo role is selectable in the top bar. `ADMIN` and `AUDITOR` can upload and manage demo document metadata; `RECORDS_VIEWER` is read-only. Code Chart Access management remains restricted to `ADMIN`.
 
 ## API
 

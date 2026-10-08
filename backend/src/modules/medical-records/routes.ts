@@ -18,12 +18,12 @@ const listQuerySchema = z.object({
 })
 const createSchema = z.object({ admissionId: z.coerce.number().int().positive(), documentType: z.string().min(1).max(80), fileName: z.string().min(1).max(255), documentDate: z.coerce.date(), uploadedBy: z.string().min(1).max(120), contentBase64: z.string().max(8_000_000).optional() })
 const allowedTypes = new Set(['Medical Certificate', 'Laboratory Result', 'Imaging Result', 'Discharge Summary', 'Clinical Notes', 'Prescription', 'Consolidated Medical Record', 'Other'])
-const clinicalRoles = new Set<ClinicalRole>(['PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'])
+const workflowRoles = new Set<ClinicalRole>(['ADMIN', 'AUDITOR', 'RECORDS_VIEWER'])
 async function ensureDocumentAccess(req: Request, admissionId: number, required: 'VIEW_ONLY' | 'FULL_ACCESS'): Promise<void> {
-  if (req.demoRole === 'ADMIN') return
-  if (!req.demoRole || !clinicalRoles.has(req.demoRole as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
-  const permission = await getCodeChartPermission(admissionId, req.demoRole as ClinicalRole)
-  if (!permission || (required === 'FULL_ACCESS' && permission !== 'FULL_ACCESS')) throw new HttpError(403, 'This role does not have permission to perform this document action')
+  if (req.demoRole === 'ADMIN' || (required === 'FULL_ACCESS' && req.demoRole === 'AUDITOR')) return
+  if (required === 'VIEW_ONLY' && (req.demoRole === 'AUDITOR' || req.demoRole === 'RECORDS_VIEWER')) return
+  if (!req.demoRole || !workflowRoles.has(req.demoRole as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
+  throw new HttpError(403, 'This role does not have permission to perform this document action')
 }
 export const documentRouter = Router()
 documentRouter.get('/admissions/:admissionId/documents', asyncHandler(async (req, res) => {
@@ -53,10 +53,10 @@ documentRouter.get('/:documentId/file', asyncHandler(async (req, res) => {
     throw new HttpError(404, 'The stored demo file could not be found')
   }
   res.setHeader('Content-Disposition', 'inline')
-  if (req.demoRole && clinicalRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(document.admissionId, req.demoRole as ClinicalRole, 'VIEWED_DOCUMENT')
+  if (req.demoRole && workflowRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(document.admissionId, req.demoRole as ClinicalRole, 'VIEWED_DOCUMENT')
   res.sendFile(filePath)
 }))
-documentRouter.post('/', requireRole('ADMIN', 'PHYSICIAN', 'CONSULTANT', 'RESIDENT', 'INTERN', 'NURSE'), asyncHandler(async (req, res) => {
+documentRouter.post('/', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
   const input = createSchema.parse(req.body)
   if (!allowedTypes.has(input.documentType)) throw new HttpError(400, 'Unsupported document type')
   await ensureDocumentAccess(req, input.admissionId, 'FULL_ACCESS')
@@ -69,6 +69,6 @@ documentRouter.post('/', requireRole('ADMIN', 'PHYSICIAN', 'CONSULTANT', 'RESIDE
   await mkdir(uploadDir, { recursive: true })
   if (input.contentBase64) await writeFile(path.join(uploadDir, storedName), Buffer.from(input.contentBase64, 'base64'))
   const document = await createDocument({ ...input, documentDate: input.documentDate.toISOString(), storagePath: `uploads/demo/${storedName}` })
-  if (req.demoRole && clinicalRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(input.admissionId, req.demoRole as ClinicalRole, 'UPLOADED_DOCUMENT')
+  if (req.demoRole && workflowRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(input.admissionId, req.demoRole as ClinicalRole, 'UPLOADED_DOCUMENT')
   res.status(201).json({ ok: true, data: document })
 }))

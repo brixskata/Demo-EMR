@@ -29,7 +29,7 @@ const selectedReason = ref("CHART_COMPLETION");
 const chartLoading = ref(false);
 const chartError = ref("");
 const canManageAccess = computed(() => demo.role === "ADMIN");
-const canUploadDocuments = computed(() => demo.role === "ADMIN" || chartAccess.value.some((item) => item.clinicalRole === demo.role && item.permission === "FULL_ACCESS"));
+const canUploadDocuments = computed(() => demo.role === "ADMIN" || demo.role === "AUDITOR");
 async function load() {
   loading.value = true;
   try {
