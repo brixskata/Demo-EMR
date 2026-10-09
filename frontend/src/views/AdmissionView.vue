@@ -22,14 +22,24 @@ const documentTotalPages = ref(0);
 const chartAccess = ref<CodeChartAccess[]>([]);
 const chartActivity = ref<CodeChartActivity[]>([]);
 const chartAccounts = ref<DemoAccount[]>([]);
-const selectedAccountId = ref(0);
+const selectedAccountId = ref<number | null>(null);
+const accountSearch = ref("");
+const accountDropdownOpen = ref(false);
+const highlightedAccountIndex = ref(0);
 const selectedPermission = ref<ChartPermission>("VIEW_ONLY");
 const selectedExpiration = ref("");
 const selectedReason = ref("CHART_COMPLETION");
 const chartLoading = ref(false);
 const chartError = ref("");
-const canManageAccess = computed(() => demo.role === "ADMIN");
+const successMessage = ref("");
+let successTimer: ReturnType<typeof setTimeout> | undefined;
+const canManageAccess = computed(() => demo.role === "ADMIN" || demo.role === "AUDITOR");
 const canUploadDocuments = computed(() => demo.role === "ADMIN" || demo.role === "AUDITOR");
+function showSuccess(message: string) {
+  successMessage.value = message;
+  if (successTimer) clearTimeout(successTimer);
+  successTimer = setTimeout(() => { successMessage.value = "" }, 5000);
+}
 async function load() {
   loading.value = true;
   try {
@@ -62,14 +72,36 @@ function formatDocumentDate(value: string) {
 }
 async function saveChartAccess() {
   chartLoading.value = true; chartError.value = ""
-  try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedAccountId.value, selectedPermission.value, selectedExpiration.value ? new Date(selectedExpiration.value).toISOString() : null, selectedReason.value); await loadChartAccess(); showAccessDialog.value = false } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
+  if (selectedAccountId.value === null) { chartError.value = "Select a user before giving access."; chartLoading.value = false; return }
+  try { await api.setCodeChartAccess(Number(route.params.admissionId), selectedAccountId.value, selectedPermission.value, selectedExpiration.value ? new Date(selectedExpiration.value).toISOString() : null, selectedReason.value); await loadChartAccess(); showAccessDialog.value = false; showSuccess("Access granted successfully.") } catch (e) { chartError.value = e instanceof Error ? e.message : "Could not update chart access" } finally { chartLoading.value = false }
 }
 function openAccess(account?: CodeChartAccess) {
-  selectedAccountId.value = account?.demoAccountId ?? chartAccounts.value[0]?.demoAccountId ?? 0
+  selectedAccountId.value = account?.demoAccountId ?? null
   selectedPermission.value = account?.permission ?? "VIEW_ONLY"
   selectedExpiration.value = account?.expiresAt ? account.expiresAt.slice(0, 16) : ""
   selectedReason.value = account?.reason ?? "CHART_COMPLETION"
+  accountSearch.value = ""
+  highlightedAccountIndex.value = 0
   showAccessDialog.value = true
+}
+const filteredAccounts = computed(() => {
+  const query = accountSearch.value.trim().toLowerCase()
+  if (!query) return chartAccounts.value
+  return chartAccounts.value.filter((account) => account.displayName.toLowerCase().includes(query))
+})
+function selectedAccount() { return chartAccounts.value.find((account) => account.demoAccountId === selectedAccountId.value) }
+function chooseAccount(account: DemoAccount) {
+  selectedAccountId.value = account.demoAccountId
+  accountSearch.value = ""
+  accountDropdownOpen.value = false
+  highlightedAccountIndex.value = 0
+}
+function handleAccountKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") { accountDropdownOpen.value = false; return }
+  if (!accountDropdownOpen.value) { if (event.key === "ArrowDown" || event.key === "Enter") accountDropdownOpen.value = true; return }
+  if (event.key === "ArrowDown") { event.preventDefault(); highlightedAccountIndex.value = Math.min(highlightedAccountIndex.value + 1, Math.max(filteredAccounts.value.length - 1, 0)) }
+  if (event.key === "ArrowUp") { event.preventDefault(); highlightedAccountIndex.value = Math.max(highlightedAccountIndex.value - 1, 0) }
+  if (event.key === "Enter") { event.preventDefault(); const account = filteredAccounts.value[highlightedAccountIndex.value]; if (account) chooseAccount(account) }
 }
 async function loadDocuments(nextPage = documentPage.value) {
   const result = await api.documents(Number(route.params.admissionId), {
@@ -107,6 +139,11 @@ function formatDate(value: string) {
 
 <template>
   <section v-if="admission">
+    <div v-if="successMessage" class="fixed right-6 top-6 z-[60] flex w-[340px] items-start gap-3 rounded-xl border border-[#dce5df] bg-white px-4 py-4 shadow-lg">
+      <span class="material-symbols-rounded text-[#7fa451]">check_circle</span>
+      <div class="min-w-0 flex-1"><p class="text-sm font-bold text-[#263650]">Success</p><p class="mt-1 text-sm text-[#69778d]">{{ successMessage }}</p></div>
+      <button class="text-[#8491a3]" aria-label="Dismiss notification" @click="successMessage = ''"><span class="material-symbols-rounded text-base">close</span></button>
+    </div>
     <div class="mb-7 flex flex-wrap items-center gap-2 text-sm text-[#8491a3]">
       <RouterLink to="/patients" class="hover:text-[#1c9f8d]"
         >Patients</RouterLink
@@ -314,7 +351,7 @@ function formatDate(value: string) {
         </div>
       </div>
     </div>
-    <section v-if="admission" class="mt-8 mb-8 rounded-2xl border border-[#e5ebf2] bg-white p-6">
+    <section v-if="admission && canManageAccess" class="mt-8 mb-8 rounded-2xl border border-[#e5ebf2] bg-white p-6">
       <div class="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div><h3 class="display text-xl font-bold">Code Chart Access</h3><p class="mt-1 text-sm text-[#8491a3]">{{ patientName }} · Encounter {{ admission.encounterNumber }}</p></div>
       </div>
@@ -324,7 +361,7 @@ function formatDate(value: string) {
       <div v-if="chartActivity.length" class="mt-6 border-t border-[#edf1f5] pt-5"><h4 class="mb-3 font-bold">Access activity</h4><div class="space-y-2 text-sm"><div v-for="item in chartActivity.slice(0, 5)" :key="`${item.createdAt}-${item.clinicalRole}-${item.action}`" class="flex justify-between gap-4 text-[#6f8095]"><span>{{ actionLabel(item.action) }} · {{ roleLabel(item.clinicalRole) }}</span><span>{{ formatActivityTime(item.createdAt) }}</span></div></div></div>
     </section>
       <div v-if="showAccessDialog" class="fixed inset-0 z-50 grid place-items-center bg-[#0b1425]/60 p-4 backdrop-blur-sm" @click.self="showAccessDialog = false">
-      <div class="w-full max-w-[520px] rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Code Chart Access</div><h2 class="display text-2xl font-bold">Give Access</h2><p class="mt-1 text-sm text-[#7b8799]">{{ patientName }} · Encounter {{ admission?.encounterNumber }}</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="showAccessDialog = false"><span class="material-symbols-rounded">close</span></button></div><div class="space-y-5"><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">User</span><select v-model="selectedAccountId" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option v-for="account in chartAccounts" :key="account.demoAccountId" :value="account.demoAccountId">{{ account.displayName }} · {{ account.clinicalRole }}</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Permission</span><select v-model="selectedPermission" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="VIEW_ONLY">View Only</option><option value="FULL_ACCESS">Full Access</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Expiration date</span><input v-model="selectedExpiration" type="datetime-local" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm" /></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Reason</span><select v-model="selectedReason" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="CHART_COMPLETION">Chart Completion</option><option value="FOR_REVIEW">For Review</option></select></label><p v-if="chartError" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p></div><div class="mt-7 flex justify-end gap-3"><button class="rounded-xl px-4 py-3 text-sm font-bold text-[#69778d]" @click="showAccessDialog = false">Cancel</button><button class="flex items-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20 disabled:opacity-50" :disabled="chartLoading" @click="saveChartAccess"><span class="material-symbols-rounded">add</span>Give Access</button></div></div>
+      <div class="w-full max-w-[520px] rounded-3xl bg-white p-7 shadow-2xl"><div class="mb-6 flex items-start justify-between"><div><div class="mb-2 text-xs font-bold uppercase tracking-[.15em] text-[#1b9e8c]">Code Chart Access</div><h2 class="display text-2xl font-bold">Give Access</h2><p class="mt-1 text-sm text-[#7b8799]">{{ patientName }} · Encounter {{ admission?.encounterNumber }}</p></div><button class="grid h-9 w-9 place-items-center rounded-full bg-[#f2f5f8] text-[#718096]" @click="showAccessDialog = false"><span class="material-symbols-rounded">close</span></button></div><div class="space-y-5"><div class="relative"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">User</span><button type="button" class="flex w-full items-center justify-between rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-left text-sm" :aria-expanded="accountDropdownOpen" @click="accountDropdownOpen = !accountDropdownOpen"><span>{{ selectedAccount()?.displayName ?? 'Select a user...' }}</span><span class="material-symbols-rounded">expand_more</span></button><div v-if="accountDropdownOpen" class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-[#dde5ee] bg-white shadow-xl"><input v-model="accountSearch" autofocus class="w-full border-b border-[#edf1f5] px-3 py-3 text-sm outline-none" placeholder="Search users..." @keydown="handleAccountKeydown" /><div class="max-h-48 overflow-y-auto py-1"><button v-for="(account, index) in filteredAccounts" :key="account.demoAccountId" type="button" class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-[#f4f8fa]" :class="{ 'bg-[#e8f1f5]': index === highlightedAccountIndex || account.demoAccountId === selectedAccountId }" @mouseenter="highlightedAccountIndex = index" @click="chooseAccount(account)"><span>{{ account.displayName }}</span><span v-if="account.demoAccountId === selectedAccountId" class="material-symbols-rounded text-base text-[#1c9f8d]">check</span></button><div v-if="!filteredAccounts.length" class="px-3 py-4 text-sm text-[#8491a3]">No users found</div></div></div></div><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Permission</span><select v-model="selectedPermission" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="VIEW_ONLY">View Only</option><option value="FULL_ACCESS">Full Access</option></select></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Expiration date</span><input v-model="selectedExpiration" type="datetime-local" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm" /></label><label class="block"><span class="mb-2 block text-xs font-bold uppercase tracking-wider text-[#69778d]">Reason</span><select v-model="selectedReason" class="w-full rounded-xl border border-[#dde5ee] bg-white px-3 py-3 text-sm"><option value="CHART_COMPLETION">Chart Completion</option><option value="FOR_REVIEW">For Review</option></select></label><p v-if="chartError" class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{{ chartError }}</p></div><div class="mt-7 flex justify-end gap-3"><button class="rounded-xl px-4 py-3 text-sm font-bold text-[#69778d]" @click="showAccessDialog = false">Cancel</button><button class="flex items-center gap-2 rounded-xl bg-[#1c9f8d] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#1c9f8d]/20 disabled:opacity-50" :disabled="chartLoading || selectedAccountId === null" @click="saveChartAccess"><span class="material-symbols-rounded">add</span>Give Access</button></div></div>
     </div>
     <UploadDocumentDialog
       v-if="showUpload"
@@ -333,6 +370,7 @@ function formatDate(value: string) {
       @close="showUpload = false"
       @saved="
         showUpload = false;
+        showSuccess('Document uploaded successfully.');
         load();
       "
     />

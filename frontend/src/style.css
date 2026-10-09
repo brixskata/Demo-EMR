@@ -164,3 +164,18 @@ aside .active-nav-link .material-symbols-rounded {
 aside .active-nav-link {
   background-color: #ffffff !important;
 }
+
+/* Keep the Code Chart Access modal controls aligned without affecting other forms. */
+.fixed.inset-0.z-50 > div[class*="max-w-[520px]"] label > select,
+.fixed.inset-0.z-50 > div[class*="max-w-[520px]"] label > input,
+.fixed.inset-0.z-50 > div[class*="max-w-[520px]"] .relative > button {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 0.75rem;
+}
+
+.fixed.inset-0.z-50 > div[class*="max-w-[520px]"] .relative > div[class*="absolute"] {
+  width: 100%;
+  box-sizing: border-box;
+}
