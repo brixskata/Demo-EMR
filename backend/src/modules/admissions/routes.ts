@@ -12,11 +12,11 @@ const accessSchema = z.object({ demoAccountId: z.coerce.number().int().positive(
 admissionRouter.get('/:admissionId/code-chart-access', asyncHandler(async (req, res) => {
   res.json({ ok: true, data: { ...(await getCodeChartAccess(idSchema.parse(req.params.admissionId))), accounts: await getDemoAccounts() } })
 }))
-admissionRouter.put('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN'), asyncHandler(async (req, res) => {
+admissionRouter.put('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
   const input = accessSchema.parse(req.body)
   res.json({ ok: true, data: await setCodeChartAccess(idSchema.parse(req.params.admissionId), input.demoAccountId, input.permission, input.expiresAt?.toISOString() ?? null, input.reason) })
 }))
-admissionRouter.delete('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN'), asyncHandler(async (req, res) => {
+admissionRouter.delete('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
   await revokeCodeChartAccess(idSchema.parse(req.params.admissionId), Number(req.params.demoAccountId))
   res.json({ ok: true, data: null })
 }))
