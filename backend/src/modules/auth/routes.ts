@@ -20,7 +20,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   if (!user || !user.isEnabled || !(await argon2.verify(user.passwordHash, input.password))) throw new HttpError(401, 'Invalid username or password')
   const session = await createSession(user.userId, absoluteHours, idleMinutes)
   res.setHeader('Set-Cookie', `${sessionCookie}=${session.token}; ${cookieOptions}; Max-Age=${absoluteHours * 60 * 60}`)
-  res.json({ ok: true, data: { userId: user.userId, username: user.username, displayName: user.displayName, role: user.role, expiresAt: session.expiresAt } })
+  res.json({ ok: true, data: { userId: user.userId, username: user.username, displayName: user.displayName, role: user.role, demoAccountId: user.demoAccountId, expiresAt: session.expiresAt } })
 }))
 
 authRouter.get('/me', asyncHandler(async (req, res) => {

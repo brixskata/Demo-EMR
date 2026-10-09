@@ -9,7 +9,7 @@ export type ClinicalRole = 'ADMIN' | 'AUDITOR' | 'RECORDS_VIEWER'
 export type ChartPermission = 'VIEW_ONLY' | 'FULL_ACCESS'
 export type DemoAccount = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole }
 export type CodeChartAccess = { demoAccountId: number; displayName: string; clinicalRole: ClinicalRole; permission: ChartPermission; expiresAt: string | null; reason: string; updatedAt: string }
-export type CodeChartActivity = { displayName: string; clinicalRole: ClinicalRole; action: 'GRANTED_ACCESS' | 'CHANGED_PERMISSION' | 'REVOKED_ACCESS' | 'EXPIRED_ACCESS' | 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT'; permission: ChartPermission | null; expiresAt: string | null; reason: string | null; createdAt: string }
+export type CodeChartActivity = { displayName: string | null; performedByDisplayName: string | null; targetDisplayName: string | null; clinicalRole: ClinicalRole; action: 'GRANTED_ACCESS' | 'CHANGED_PERMISSION' | 'REVOKED_ACCESS' | 'EXPIRED_ACCESS' | 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT'; permission: ChartPermission | null; permissionBefore: ChartPermission | null; permissionAfter: ChartPermission | null; expiresAt: string | null; reason: string | null; documentId: number | null; createdAt: string }
 
 export async function listAdmissions(patientId: number): Promise<Admission[]> {
   const pool = await getPool()
@@ -61,38 +61,47 @@ export async function getDemoAccounts(): Promise<DemoAccount[]> {
 export async function getCodeChartAccess(admissionId: number): Promise<{ access: CodeChartAccess[]; activity: CodeChartActivity[] }> {
   const pool = await getPool()
   const result = await pool.request().input('admissionId', sql.Int, admissionId).query<CodeChartAccess & CodeChartActivity>(`
+    INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, PermissionAfter, ExpiresAt, Reason, TargetDemoAccountId)
+    SELECT x.AdmissionId, u.ClinicalRole, 'EXPIRED_ACCESS', x.Permission, x.ExpiresAt, x.Reason, x.DemoAccountId
+    FROM dbo.CodeChartUserAccess x INNER JOIN dbo.DemoAccount u ON u.DemoAccountId = x.DemoAccountId
+    WHERE x.AdmissionId = @admissionId AND x.ExpiresAt IS NOT NULL AND x.ExpiresAt <= SYSUTCDATETIME()
+      AND NOT EXISTS (SELECT 1 FROM dbo.CodeChartAccessActivity a WHERE a.AdmissionId = x.AdmissionId AND a.TargetDemoAccountId = x.DemoAccountId AND a.Action = 'EXPIRED_ACCESS' AND a.CreatedAt >= x.UpdatedAt);
     SELECT u.DemoAccountId AS demoAccountId, u.DisplayName AS displayName, u.ClinicalRole AS clinicalRole, x.Permission AS permission,
       CONVERT(varchar(33), x.ExpiresAt, 127) AS expiresAt, x.Reason AS reason, CONVERT(varchar(33), x.UpdatedAt, 127) AS updatedAt
     FROM dbo.CodeChartUserAccess x INNER JOIN dbo.DemoAccount u ON u.DemoAccountId = x.DemoAccountId
     WHERE x.AdmissionId = @admissionId AND (x.ExpiresAt IS NULL OR x.ExpiresAt > SYSUTCDATETIME()) ORDER BY u.DisplayName;
-    SELECT u.DisplayName AS displayName, u.ClinicalRole AS clinicalRole, a.Action AS action, a.Permission AS permission,
-      CONVERT(varchar(33), a.ExpiresAt, 127) AS expiresAt, a.Reason AS reason, CONVERT(varchar(33), a.CreatedAt, 127) AS createdAt
-    FROM dbo.CodeChartAccessActivity a INNER JOIN dbo.DemoAccount u ON u.ClinicalRole = a.ClinicalRole
+    SELECT target.DisplayName AS displayName, actor.DisplayName AS performedByDisplayName, target.DisplayName AS targetDisplayName,
+      a.ClinicalRole AS clinicalRole, a.Action AS action, COALESCE(a.PermissionAfter, a.Permission) AS permission,
+      a.PermissionBefore AS permissionBefore, a.PermissionAfter AS permissionAfter, CONVERT(varchar(33), a.ExpiresAt, 127) AS expiresAt,
+      a.Reason AS reason, a.DocumentId AS documentId, CONVERT(varchar(33), a.CreatedAt, 127) AS createdAt
+    FROM dbo.CodeChartAccessActivity a LEFT JOIN dbo.DemoAccount target ON target.DemoAccountId = a.TargetDemoAccountId
+      LEFT JOIN dbo.AppUser actor ON actor.UserId = a.PerformedByUserId
     WHERE a.AdmissionId = @admissionId ORDER BY a.CreatedAt DESC;`)
   return { access: result.recordsets[0] as CodeChartAccess[], activity: result.recordsets[1] as CodeChartActivity[] }
 }
 
-export async function setCodeChartAccess(admissionId: number, demoAccountId: number, permission: ChartPermission, expiresAt: string | null, reason: string): Promise<CodeChartAccess> {
+export async function setCodeChartAccess(admissionId: number, demoAccountId: number, permission: ChartPermission, expiresAt: string | null, reason: string, performedByUserId: number): Promise<CodeChartAccess> {
   const pool = await getPool()
-  const result = await pool.request().input('admissionId', sql.Int, admissionId).input('demoAccountId', sql.Int, demoAccountId).input('permission', sql.VarChar(20), permission).input('expiresAt', sql.DateTime2(3), expiresAt ? new Date(expiresAt) : null).input('reason', sql.VarChar(30), reason).query<CodeChartAccess>(`
+  const result = await pool.request().input('admissionId', sql.Int, admissionId).input('demoAccountId', sql.Int, demoAccountId).input('permission', sql.VarChar(20), permission).input('expiresAt', sql.DateTime2(3), expiresAt ? new Date(expiresAt) : null).input('reason', sql.VarChar(30), reason).input('performedByUserId', sql.Int, performedByUserId).query<CodeChartAccess>(`
     DECLARE @role varchar(20) = (SELECT ClinicalRole FROM dbo.DemoAccount WHERE DemoAccountId = @demoAccountId);
+    DECLARE @previousPermission varchar(20) = (SELECT Permission FROM dbo.CodeChartUserAccess WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId);
     IF EXISTS (SELECT 1 FROM dbo.CodeChartUserAccess WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId)
     BEGIN
       UPDATE dbo.CodeChartUserAccess SET Permission = @permission, ExpiresAt = @expiresAt, Reason = @reason, UpdatedAt = SYSUTCDATETIME() WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId;
-      INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, Permission) VALUES (@admissionId, @role, 'CHANGED_PERMISSION', @permission);
+      INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, Permission, PermissionBefore, PermissionAfter, ExpiresAt, Reason, PerformedByUserId, TargetDemoAccountId) VALUES (@admissionId, @role, 'CHANGED_PERMISSION', @permission, @previousPermission, @permission, @expiresAt, @reason, @performedByUserId, @demoAccountId);
     END
     ELSE
     BEGIN
       INSERT dbo.CodeChartUserAccess (AdmissionId, DemoAccountId, Permission, ExpiresAt, Reason) VALUES (@admissionId, @demoAccountId, @permission, @expiresAt, @reason);
-      INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, Permission) VALUES (@admissionId, @role, 'GRANTED_ACCESS', @permission);
+      INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, Permission, PermissionAfter, ExpiresAt, Reason, PerformedByUserId, TargetDemoAccountId) VALUES (@admissionId, @role, 'GRANTED_ACCESS', @permission, @permission, @expiresAt, @reason, @performedByUserId, @demoAccountId);
     END;
     SELECT u.DemoAccountId AS demoAccountId, u.DisplayName AS displayName, u.ClinicalRole AS clinicalRole, x.Permission AS permission, CONVERT(varchar(33), x.ExpiresAt, 127) AS expiresAt, x.Reason AS reason, CONVERT(varchar(33), x.UpdatedAt, 127) AS updatedAt FROM dbo.CodeChartUserAccess x INNER JOIN dbo.DemoAccount u ON u.DemoAccountId = x.DemoAccountId WHERE x.AdmissionId = @admissionId AND x.DemoAccountId = @demoAccountId;`)
   return result.recordset[0]!
 }
 
-export async function revokeCodeChartAccess(admissionId: number, demoAccountId: number): Promise<void> {
+export async function revokeCodeChartAccess(admissionId: number, demoAccountId: number, performedByUserId: number): Promise<void> {
   const pool = await getPool()
-  await pool.request().input('admissionId', sql.Int, admissionId).input('demoAccountId', sql.Int, demoAccountId).query(`DECLARE @role varchar(20) = (SELECT ClinicalRole FROM dbo.DemoAccount WHERE DemoAccountId = @demoAccountId); DELETE FROM dbo.CodeChartUserAccess WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId; IF @@ROWCOUNT > 0 INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action) VALUES (@admissionId, @role, 'REVOKED_ACCESS');`)
+  await pool.request().input('admissionId', sql.Int, admissionId).input('demoAccountId', sql.Int, demoAccountId).input('performedByUserId', sql.Int, performedByUserId).query(`DECLARE @role varchar(20) = (SELECT ClinicalRole FROM dbo.DemoAccount WHERE DemoAccountId = @demoAccountId); DECLARE @permission varchar(20) = (SELECT Permission FROM dbo.CodeChartUserAccess WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId); DELETE FROM dbo.CodeChartUserAccess WHERE AdmissionId = @admissionId AND DemoAccountId = @demoAccountId; IF @@ROWCOUNT > 0 INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, PermissionBefore, PerformedByUserId, TargetDemoAccountId) VALUES (@admissionId, @role, 'REVOKED_ACCESS', @permission, @performedByUserId, @demoAccountId);`)
 }
 
 export async function getCodeChartPermission(admissionId: number, clinicalRole: ClinicalRole): Promise<ChartPermission | undefined> {
@@ -101,7 +110,13 @@ export async function getCodeChartPermission(admissionId: number, clinicalRole: 
   return result.recordset[0]?.permission
 }
 
-export async function recordDocumentActivity(admissionId: number, clinicalRole: ClinicalRole, action: 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT'): Promise<void> {
+export async function getCodeChartPermissionForUser(admissionId: number, userId: number): Promise<ChartPermission | undefined> {
   const pool = await getPool()
-  await pool.request().input('admissionId', sql.Int, admissionId).input('clinicalRole', sql.VarChar(20), clinicalRole).input('action', sql.VarChar(30), action).query('INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action) VALUES (@admissionId, @clinicalRole, @action)')
+  const result = await pool.request().input('admissionId', sql.Int, admissionId).input('userId', sql.Int, userId).query<{ permission: ChartPermission }>('SELECT x.Permission AS permission FROM dbo.CodeChartUserAccess x INNER JOIN dbo.AppUser au ON au.DemoAccountId = x.DemoAccountId WHERE x.AdmissionId = @admissionId AND au.UserId = @userId AND (x.ExpiresAt IS NULL OR x.ExpiresAt > SYSUTCDATETIME())')
+  return result.recordset[0]?.permission
+}
+
+export async function recordDocumentActivity(admissionId: number, clinicalRole: ClinicalRole, action: 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT', performedByUserId: number | null, targetDemoAccountId: number | null, documentId: number | null): Promise<void> {
+  const pool = await getPool()
+  await pool.request().input('admissionId', sql.Int, admissionId).input('clinicalRole', sql.VarChar(20), clinicalRole).input('action', sql.VarChar(30), action).input('performedByUserId', sql.Int, performedByUserId).input('targetDemoAccountId', sql.Int, targetDemoAccountId).input('documentId', sql.Int, documentId).query('INSERT dbo.CodeChartAccessActivity (AdmissionId, ClinicalRole, Action, PerformedByUserId, TargetDemoAccountId, DocumentId) VALUES (@admissionId, @clinicalRole, @action, @performedByUserId, @targetDemoAccountId, @documentId)')
 }

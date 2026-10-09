@@ -2,21 +2,27 @@ import crypto from 'node:crypto'
 import { getPool, sql } from '../../database/connection.ts'
 
 export type AuthRole = 'ADMIN' | 'AUDITOR' | 'RECORDS_VIEWER'
-export type AuthUser = { userId: number; username: string; displayName: string; role: AuthRole }
+export type AuthUser = { userId: number; username: string; displayName: string; role: AuthRole; demoAccountId: number | null }
 
 function tokenHash(token: string): string { return crypto.createHash('sha256').update(token).digest('hex') }
 
 export async function findUser(username: string): Promise<(AuthUser & { passwordHash: string; isEnabled: boolean }) | undefined> {
   const pool = await getPool()
   const result = await pool.request().input('username', sql.VarChar(120), username).query<AuthUser & { passwordHash: string; isEnabled: boolean }>(`
-    SELECT UserId AS userId, Username AS username, DisplayName AS displayName, Role AS role, PasswordHash AS passwordHash, IsEnabled AS isEnabled
+    SELECT UserId AS userId, Username AS username, DisplayName AS displayName, Role AS role, DemoAccountId AS demoAccountId, PasswordHash AS passwordHash, IsEnabled AS isEnabled
     FROM dbo.AppUser WHERE Username = @username`)
   return result.recordset[0]
 }
 
-export async function createUser(username: string, displayName: string, role: AuthRole, passwordHash: string): Promise<void> {
+export async function findDemoAccountId(displayName: string): Promise<number | undefined> {
   const pool = await getPool()
-  await pool.request().input('username', sql.VarChar(120), username).input('displayName', sql.NVarChar(120), displayName).input('role', sql.VarChar(20), role).input('passwordHash', sql.NVarChar(255), passwordHash).query('INSERT dbo.AppUser (Username, DisplayName, PasswordHash, Role) VALUES (@username, @displayName, @passwordHash, @role)')
+  const result = await pool.request().input('displayName', sql.NVarChar(120), displayName).query<{ demoAccountId: number }>('SELECT DemoAccountId AS demoAccountId FROM dbo.DemoAccount WHERE DisplayName = @displayName')
+  return result.recordset[0]?.demoAccountId
+}
+
+export async function createUser(username: string, displayName: string, role: AuthRole, passwordHash: string, demoAccountId: number | null): Promise<void> {
+  const pool = await getPool()
+  await pool.request().input('username', sql.VarChar(120), username).input('displayName', sql.NVarChar(120), displayName).input('role', sql.VarChar(20), role).input('passwordHash', sql.NVarChar(255), passwordHash).input('demoAccountId', sql.Int, demoAccountId).query('INSERT dbo.AppUser (Username, DisplayName, PasswordHash, Role, DemoAccountId) VALUES (@username, @displayName, @passwordHash, @role, @demoAccountId)')
 }
 
 export async function createSession(userId: number, absoluteHours: number, idleMinutes: number | null): Promise<{ token: string; expiresAt: string }> {
@@ -30,7 +36,7 @@ export async function createSession(userId: number, absoluteHours: number, idleM
 export async function findSession(token: string, idleMinutes: number | null): Promise<AuthUser | undefined> {
   const pool = await getPool()
   const result = await pool.request().input('tokenHash', sql.VarChar(64), tokenHash(token)).input('idleMinutes', sql.Int, idleMinutes).query<AuthUser>(`
-    SELECT u.UserId AS userId, u.Username AS username, u.DisplayName AS displayName, u.Role AS role
+    SELECT u.UserId AS userId, u.Username AS username, u.DisplayName AS displayName, u.Role AS role, u.DemoAccountId AS demoAccountId
     FROM dbo.AuthSession s INNER JOIN dbo.AppUser u ON u.UserId = s.UserId
     WHERE s.TokenHash = @tokenHash AND s.RevokedAt IS NULL AND s.ExpiresAt > SYSUTCDATETIME() AND u.IsEnabled = 1
       AND (@idleMinutes IS NULL OR s.LastSeenAt > DATEADD(minute, -@idleMinutes, SYSUTCDATETIME()))`)

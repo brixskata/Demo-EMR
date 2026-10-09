@@ -3,7 +3,7 @@ import type { Request } from 'express'
 import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getDocument, listDocumentsPage, createDocument, getPatientNumberForAdmission } from './repository.ts'
-import { getCodeChartPermission, recordDocumentActivity, type ClinicalRole } from '../admissions/repository.ts'
+import { getCodeChartPermissionForUser, recordDocumentActivity, type ClinicalRole } from '../admissions/repository.ts'
 import { requireAuthenticated, requireRole } from '../../shared/authorization/demoAuth.ts'
 import { access, mkdir, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
@@ -22,7 +22,13 @@ const workflowRoles = new Set<ClinicalRole>(['ADMIN', 'AUDITOR', 'RECORDS_VIEWER
 async function ensureDocumentAccess(req: Request, admissionId: number, required: 'VIEW_ONLY' | 'FULL_ACCESS'): Promise<void> {
   const role = req.authUser?.role ?? req.demoRole
   if (role === 'ADMIN' || (required === 'FULL_ACCESS' && role === 'AUDITOR')) return
-  if (required === 'VIEW_ONLY' && (role === 'AUDITOR' || role === 'RECORDS_VIEWER')) return
+  if (role === 'AUDITOR' && required === 'VIEW_ONLY') return
+  if (role === 'RECORDS_VIEWER' && req.authUser) {
+    const permission = await getCodeChartPermissionForUser(admissionId, req.authUser.userId)
+    if (permission === 'VIEW_ONLY' || permission === 'FULL_ACCESS') {
+      if (required === 'VIEW_ONLY' || permission === 'FULL_ACCESS') return
+    }
+  }
   if (!role || !workflowRoles.has(role as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
   throw new HttpError(403, 'This role does not have permission to perform this document action')
 }
@@ -56,7 +62,7 @@ documentRouter.get('/:documentId/file', asyncHandler(async (req, res) => {
   }
   res.setHeader('Content-Disposition', 'inline')
   const role = req.authUser?.role ?? req.demoRole
-  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(document.admissionId, role as ClinicalRole, 'VIEWED_DOCUMENT')
+  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(document.admissionId, role as ClinicalRole, 'VIEWED_DOCUMENT', req.authUser?.userId ?? null, req.authUser?.demoAccountId ?? null, document.documentId)
   res.sendFile(filePath)
 }))
 documentRouter.post('/', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
@@ -73,6 +79,6 @@ documentRouter.post('/', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (re
   if (input.contentBase64) await writeFile(path.join(uploadDir, storedName), Buffer.from(input.contentBase64, 'base64'))
   const document = await createDocument({ ...input, documentDate: input.documentDate.toISOString(), storagePath: `uploads/demo/${storedName}` })
   const role = req.authUser?.role ?? req.demoRole
-  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(input.admissionId, role as ClinicalRole, 'UPLOADED_DOCUMENT')
+  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(input.admissionId, role as ClinicalRole, 'UPLOADED_DOCUMENT', req.authUser?.userId ?? null, req.authUser?.demoAccountId ?? null, document.documentId)
   res.status(201).json({ ok: true, data: document })
 }))

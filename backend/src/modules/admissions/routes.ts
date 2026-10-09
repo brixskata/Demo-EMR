@@ -9,16 +9,20 @@ admissionRouter.use(requireAuthenticated)
 const idSchema = z.coerce.number().int().positive()
 const permissionSchema = z.enum(['VIEW_ONLY', 'FULL_ACCESS'])
 const reasonSchema = z.enum(['CHART_COMPLETION', 'FOR_REVIEW'])
-const accessSchema = z.object({ demoAccountId: z.coerce.number().int().positive(), permission: permissionSchema, expiresAt: z.coerce.date().nullable().optional(), reason: reasonSchema })
-admissionRouter.get('/:admissionId/code-chart-access', asyncHandler(async (req, res) => {
+const accessSchema = z.object({ demoAccountId: z.coerce.number().int().positive(), permission: permissionSchema, expiresAt: z.coerce.date().nullable().optional(), reason: reasonSchema }).superRefine((value, context) => {
+  if (value.expiresAt && value.expiresAt.getTime() <= Date.now() + 5 * 60 * 1000) context.addIssue({ code: 'custom', path: ['expiresAt'], message: 'Expiration date and time must be at least 5 minutes in the future.' })
+})
+admissionRouter.get('/:admissionId/code-chart-access', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
   res.json({ ok: true, data: { ...(await getCodeChartAccess(idSchema.parse(req.params.admissionId))), accounts: await getDemoAccounts() } })
 }))
 admissionRouter.put('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
   const input = accessSchema.parse(req.body)
-  res.json({ ok: true, data: await setCodeChartAccess(idSchema.parse(req.params.admissionId), input.demoAccountId, input.permission, input.expiresAt?.toISOString() ?? null, input.reason) })
+  if (!req.authUser) throw new HttpError(401, 'Authentication required')
+  res.json({ ok: true, data: await setCodeChartAccess(idSchema.parse(req.params.admissionId), input.demoAccountId, input.permission, input.expiresAt?.toISOString() ?? null, input.reason, req.authUser.userId) })
 }))
 admissionRouter.delete('/:admissionId/code-chart-access/:demoAccountId', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
-  await revokeCodeChartAccess(idSchema.parse(req.params.admissionId), Number(req.params.demoAccountId))
+  if (!req.authUser) throw new HttpError(401, 'Authentication required')
+  await revokeCodeChartAccess(idSchema.parse(req.params.admissionId), Number(req.params.demoAccountId), req.authUser.userId)
   res.json({ ok: true, data: null })
 }))
 admissionRouter.get('/:admissionId', asyncHandler(async (req, res) => {
