@@ -14,9 +14,9 @@ export async function findUser(username: string): Promise<(AuthUser & { password
   return result.recordset[0]
 }
 
-export async function createAdmin(username: string, displayName: string, passwordHash: string): Promise<void> {
+export async function createUser(username: string, displayName: string, role: AuthRole, passwordHash: string): Promise<void> {
   const pool = await getPool()
-  await pool.request().input('username', sql.VarChar(120), username).input('displayName', sql.NVarChar(120), displayName).input('passwordHash', sql.NVarChar(255), passwordHash).query("INSERT dbo.AppUser (Username, DisplayName, PasswordHash, Role) VALUES (@username, @displayName, @passwordHash, 'ADMIN')")
+  await pool.request().input('username', sql.VarChar(120), username).input('displayName', sql.NVarChar(120), displayName).input('role', sql.VarChar(20), role).input('passwordHash', sql.NVarChar(255), passwordHash).query('INSERT dbo.AppUser (Username, DisplayName, PasswordHash, Role) VALUES (@username, @displayName, @passwordHash, @role)')
 }
 
 export async function createSession(userId: number, absoluteHours: number, idleMinutes: number | null): Promise<{ token: string; expiresAt: string }> {
