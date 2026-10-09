@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getAdmission, getCodeChartAccess, getDemoAccounts, revokeCodeChartAccess, setCodeChartAccess } from './repository.ts'
 import { listDocuments } from '../medical-records/repository.ts'
-import { requireRole } from '../../shared/authorization/demoAuth.ts'
+import { requireAuthenticated, requireRole } from '../../shared/authorization/demoAuth.ts'
 export const admissionRouter = Router()
+admissionRouter.use(requireAuthenticated)
 const idSchema = z.coerce.number().int().positive()
 const permissionSchema = z.enum(['VIEW_ONLY', 'FULL_ACCESS'])
 const reasonSchema = z.enum(['CHART_COMPLETION', 'FOR_REVIEW'])

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getDocument, listDocumentsPage, createDocument, getPatientNumberForAdmission } from './repository.ts'
 import { getCodeChartPermission, recordDocumentActivity, type ClinicalRole } from '../admissions/repository.ts'
-import { requireRole } from '../../shared/authorization/demoAuth.ts'
+import { requireAuthenticated, requireRole } from '../../shared/authorization/demoAuth.ts'
 import { access, mkdir, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import path from 'node:path'
@@ -20,12 +20,14 @@ const createSchema = z.object({ admissionId: z.coerce.number().int().positive(),
 const allowedTypes = new Set(['Medical Certificate', 'Laboratory Result', 'Imaging Result', 'Discharge Summary', 'Clinical Notes', 'Prescription', 'Consolidated Medical Record', 'Other'])
 const workflowRoles = new Set<ClinicalRole>(['ADMIN', 'AUDITOR', 'RECORDS_VIEWER'])
 async function ensureDocumentAccess(req: Request, admissionId: number, required: 'VIEW_ONLY' | 'FULL_ACCESS'): Promise<void> {
-  if (req.demoRole === 'ADMIN' || (required === 'FULL_ACCESS' && req.demoRole === 'AUDITOR')) return
-  if (required === 'VIEW_ONLY' && (req.demoRole === 'AUDITOR' || req.demoRole === 'RECORDS_VIEWER')) return
-  if (!req.demoRole || !workflowRoles.has(req.demoRole as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
+  const role = req.authUser?.role ?? req.demoRole
+  if (role === 'ADMIN' || (required === 'FULL_ACCESS' && role === 'AUDITOR')) return
+  if (required === 'VIEW_ONLY' && (role === 'AUDITOR' || role === 'RECORDS_VIEWER')) return
+  if (!role || !workflowRoles.has(role as ClinicalRole)) throw new HttpError(403, 'This role cannot access admission documents')
   throw new HttpError(403, 'This role does not have permission to perform this document action')
 }
 export const documentRouter = Router()
+documentRouter.use(requireAuthenticated)
 documentRouter.get('/admissions/:admissionId/documents', asyncHandler(async (req, res) => {
   const admissionId = idSchema.parse(req.params.admissionId)
   const query = listQuerySchema.parse(req.query)
@@ -53,7 +55,8 @@ documentRouter.get('/:documentId/file', asyncHandler(async (req, res) => {
     throw new HttpError(404, 'The stored demo file could not be found')
   }
   res.setHeader('Content-Disposition', 'inline')
-  if (req.demoRole && workflowRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(document.admissionId, req.demoRole as ClinicalRole, 'VIEWED_DOCUMENT')
+  const role = req.authUser?.role ?? req.demoRole
+  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(document.admissionId, role as ClinicalRole, 'VIEWED_DOCUMENT')
   res.sendFile(filePath)
 }))
 documentRouter.post('/', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (req, res) => {
@@ -69,6 +72,7 @@ documentRouter.post('/', requireRole('ADMIN', 'AUDITOR'), asyncHandler(async (re
   await mkdir(uploadDir, { recursive: true })
   if (input.contentBase64) await writeFile(path.join(uploadDir, storedName), Buffer.from(input.contentBase64, 'base64'))
   const document = await createDocument({ ...input, documentDate: input.documentDate.toISOString(), storagePath: `uploads/demo/${storedName}` })
-  if (req.demoRole && workflowRoles.has(req.demoRole as ClinicalRole)) await recordDocumentActivity(input.admissionId, req.demoRole as ClinicalRole, 'UPLOADED_DOCUMENT')
+  const role = req.authUser?.role ?? req.demoRole
+  if (role && workflowRoles.has(role as ClinicalRole)) await recordDocumentActivity(input.admissionId, role as ClinicalRole, 'UPLOADED_DOCUMENT')
   res.status(201).json({ ok: true, data: document })
 }))

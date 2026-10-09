@@ -1,4 +1,5 @@
 const base = import.meta.env.VITE_API_BASE_URL ?? '/api'
+export type AuthUser = { userId: number; username: string; displayName: string; role: ClinicalRole }
 
 export type Patient = { patientId: number; patientNumber: string; firstName: string; lastName: string; dateOfBirth: string; sex: string; patientType?: 'Inpatient' | 'Outpatient' | 'ER'; admissionCount?: number }
 export type Admission = { admissionId: number; patientId: number; admissionNumber: string; encounterNumber: string; admissionDate: string; dischargeDate: string | null; ward: string; status: string; documentCount?: number }
@@ -13,12 +14,15 @@ export type CodeChartAccess = { demoAccountId: number; displayName: string; clin
 export type CodeChartActivity = { displayName: string; clinicalRole: ClinicalRole; action: 'GRANTED_ACCESS' | 'CHANGED_PERMISSION' | 'REVOKED_ACCESS' | 'EXPIRED_ACCESS' | 'VIEWED_DOCUMENT' | 'UPLOADED_DOCUMENT'; permission: ChartPermission | null; expiresAt: string | null; reason: string | null; createdAt: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${base}${path}`, { ...init, headers: { 'Content-Type': 'application/json', 'x-demo-role': localStorage.getItem('demo-role') ?? 'ADMIN', ...init?.headers } })
+  const response = await fetch(`${base}${path}`, { ...init, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('demo-role') ? { 'x-demo-role': localStorage.getItem('demo-role')! } : {}), ...init?.headers } })
   const body = await response.json() as { ok: boolean; data: T; error?: { message: string } }
   if (!response.ok || !body.ok) throw new Error(body.error?.message ?? 'Request failed')
   return body.data
 }
 export const api = {
+  login: (username: string, password: string) => request<AuthUser & { expiresAt: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  me: () => request<AuthUser>('/auth/me'),
+  logout: () => request<null>('/auth/logout', { method: 'POST' }),
   patients: (params: { page?: number; pageSize?: number; search?: string; type?: string; gender?: string; dateOfBirthFrom?: string; dateOfBirthTo?: string; sort?: 'name_asc' | 'name_desc' } = {}) => {
     const query = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 5) })
     if (params.search) query.set('search', params.search)

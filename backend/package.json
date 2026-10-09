@@ -25,7 +25,8 @@
     "start:live": "node --env-file-if-exists=.env dist/server.js",
     "dev:live": "node --env-file-if-exists=.env --watch src/server.ts"
     ,"db": "node --env-file-if-exists=.env database/migrate.ts"
-    ,"seed": "node --env-file-if-exists=.env database/seed.ts"
+    ,"seed": "node --env-file-if-exists=.env database/seed.ts",
+    "provision:admin": "node --env-file-if-exists=.env scripts/provision-admin.ts"
   },
   "dependencies": {
     "argon2": "^0.44.0",

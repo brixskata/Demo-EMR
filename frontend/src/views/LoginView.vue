@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { api } from '../services/api'
 
+const router = useRouter()
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
@@ -15,11 +18,16 @@ async function submit() {
     error.value = 'Enter your username and password.'
     return
   }
-
+  
   submitting.value = true
-  await new Promise((resolve) => setTimeout(resolve, 350))
-  submitting.value = false
-  error.value = 'Authentication is not configured yet. Use the existing demo role selector to access the demo.'
+  try {
+    await api.login(username.value.trim(), password.value)
+    await router.push('/patients')
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Unable to sign in.'
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -77,3 +85,5 @@ async function submit() {
     </section>
   </main>
 </template>
+
+

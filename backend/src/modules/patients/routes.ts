@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { asyncHandler, HttpError } from '../../shared/http.ts'
 import { getPatient, listPatients } from './repository.ts'
 import { listAdmissions, listAdmissionsPage } from '../admissions/repository.ts'
+import { requireAuthenticated } from '../../shared/authorization/demoAuth.ts'
 
 const idSchema = z.coerce.number().int().positive()
 const listQuerySchema = z.object({
@@ -16,6 +17,7 @@ const listQuerySchema = z.object({
   sort: z.enum(['name_asc', 'name_desc']).default('name_asc'),
 })
 export const patientRouter = Router()
+patientRouter.use(requireAuthenticated)
 patientRouter.get('/', asyncHandler(async (req, res) => {
   const query = listQuerySchema.parse(req.query)
   res.json({ ok: true, data: await listPatients(query) })

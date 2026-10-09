@@ -3,8 +3,9 @@ import PatientsView from '../views/PatientsView.vue'
 import PatientDetailsView from '../views/PatientDetailsView.vue'
 import AdmissionView from '../views/AdmissionView.vue'
 import LoginView from '../views/LoginView.vue'
+import { api } from '../services/api'
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/patients' },
@@ -14,3 +15,16 @@ export default createRouter({
     { path: '/admissions/:admissionId', component: AdmissionView },
   ],
 })
+
+router.beforeEach(async (to) => {
+  if (to.path === '/login') return true
+  try {
+    await api.me()
+    return true
+  } catch {
+    if (import.meta.env.VITE_AUTH_DEMO_MODE === 'true' && localStorage.getItem('demo-role')) return true
+    return '/login'
+  }
+})
+
+export default router
